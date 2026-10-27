@@ -15,6 +15,7 @@ const { computeBudget } = await import('../modules/creatures/director.js');
 await new Promise((r) => setTimeout(r, 300));
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+const waitFor = async (fn, ms = 4000) => { const end = Date.now() + ms; while (Date.now() < end) { if (fn()) return true; await sleep(25); } return false; };
 let failures = 0;
 const check = (ok, label) => { console.log(`${ok ? 'PASS' : 'FAIL'}  ${label}`); if (!ok) failures++; };
 
@@ -50,26 +51,63 @@ place(a, start.x + 1, start.y);
 await sleep(150);
 check(Math.abs(b.snap.entities.find((e) => e.id === a.id).x - (start.x + 1)) < 1e-9, 'Bob sees Alice move');
 
-// --- harvesting ------------------------------------------------------------
+// --- mining: hold left click; tools make it faster --------------------------
+const alice = a.server();
+const slotOf = (item) => alice.hotbar.indexOf(item);
+check(alice.hotbar[0] === 'sword' && a.me().hotbar[0] === 'sword', 'new players start with a sword in the first hotbar slot');
 const trees = [];
 for (let y = 1; y < a.world.h - 1 && trees.length < 6; y++)
   for (let x = 1; x < a.world.w - 1 && trees.length < 6; x++)
     if (a.world.tile(x, y).name === 'tree' && !a.world.isSolid(x - 1, y)) trees.push({ x, y });
-for (const t of trees) { place(a, t.x - 0.5, t.y + 0.5); a.action('interact', { x: t.x, y: t.y }); }
-await sleep(200);
-check(a.me().inventory.wood === 6, `harvested 6 wood (got ${a.me().inventory.wood})`);
+const mineTree = async (t, wood) => {
+  place(a, t.x - 0.5, t.y + 0.5);
+  await sleep(60);
+  const started = Date.now();
+  a.action('mine', { x: t.x, y: t.y });
+  await waitFor(() => a.me()?.inventory.wood === wood);
+  return Date.now() - started;
+};
+const handMs = await mineTree(trees[0], 1);
+check(handMs > 1500, `mining a tree by hand takes about its hardness (${handMs} ms)`);
+game.give(alice, 'axe');
+await sleep(100);
+a.action('select', { slot: slotOf('axe') });
+await sleep(60);
+check(alice.selected === slotOf('axe'), 'select picks a hotbar slot');
+const axeMs = await mineTree(trees[1], 2);
+check(axeMs < 800, `an axe mines trees much faster (${axeMs} ms)`);
+for (let i = 2; i < trees.length; i++) await mineTree(trees[i], i + 1);
+check(a.me().inventory.wood === 6, `mined 6 wood (got ${a.me().inventory.wood})`);
 check(b.tiles.length === 6 && b.world.tile(trees[0].x, trees[0].y).name === 'grass', 'tile edits reach other clients');
 const carol = await client('Carol');
 check(carol.world.tile(trees[0].x, trees[0].y).name === 'grass', 'late joiner sees earlier tile edits');
 
-// --- campfire: craft, feed, burn out ------------------------------------------
+let rock = null;
+for (let y = 1; y < a.world.h - 1 && !rock; y++)
+  for (let x = 1; x < a.world.w - 1 && !rock; x++)
+    if (a.world.tile(x, y).name === 'stone' && !a.world.isSolid(x - 1, y)) rock = { x, y };
+const home = { x: alice.x, y: alice.y };
+place(a, rock.x - 0.5, rock.y + 0.5);
+await sleep(60);
+a.action('mine', rock);
+await sleep(1000);
+check(game.world.tile(rock.x, rock.y).name === 'stone' && alice.mining?.p > 0, 'an axe does not speed up mining stone');
+a.action('mine', { stop: true });
+await sleep(60);
+check(!alice.mining, 'letting go stops mining');
+place(a, home.x, home.y);
+
+// --- campfire: craft, place, feed, burn out ------------------------------------
 const t0 = trees[0];
 place(a, t0.x - 0.5, t0.y + 0.5);
 a.action('craft', { recipe: 'campfire' });
 await sleep(150);
+check(a.me().inventory.campfire === 1 && a.me().inventory.wood === 1, 'crafting turns 5 wood into a campfire item');
+a.action('select', { slot: slotOf('campfire') });
+a.action('use', { x: t0.x, y: t0.y });
+await sleep(150);
 const fire = [...game.entities.values()].find((e) => e.type === 'campfire');
-check(fire && b.snap.entities.some((e) => e.type === 'campfire'), 'crafted campfire appears for everyone');
-check(a.me().inventory.wood === 1, 'crafting consumed 5 wood');
+check(fire && b.snap.entities.some((e) => e.type === 'campfire') && !a.me().inventory.campfire, 'a campfire placed with right click appears for everyone');
 const before = fire.fuel;
 a.action('interact', { x: Math.floor(fire.x), y: Math.floor(fire.y) });
 await sleep(150);
@@ -79,8 +117,59 @@ await sleep(200);
 check(!fire.repels && fire.light < 1 && a.saw('fireOut'), 'fire burns out: stops repelling, embers glow');
 fire.fuel = 60;
 
+// --- placing blocks and jack-o-lanterns ----------------------------------------
+const overlapsTile = (t) => [...game.entities.values()].some((e) => Math.abs(e.x - t.x - 0.5) < 0.85 && Math.abs(e.y - t.y - 0.5) < 0.85);
+const freeTiles = [];
+for (let dy = -2; dy <= 2; dy++) {
+  for (let dx = -2; dx <= 2; dx++) {
+    const t = { x: Math.floor(alice.x) + dx, y: Math.floor(alice.y) + dy };
+    if (Math.hypot(t.x + 0.5 - alice.x, t.y + 0.5 - alice.y) < 2.4 && !game.world.isSolid(t.x, t.y) && !overlapsTile(t)) freeTiles.push(t);
+  }
+}
+const [wallAt, lanternAt] = freeTiles;
+game.give(alice, 'wood', 2);
+await sleep(100);
+a.action('select', { slot: slotOf('wood') });
+a.action('use', wallAt);
+await sleep(150);
+check(game.world.tile(wallAt.x, wallAt.y).name === 'wood-wall' && b.world.tile(wallAt.x, wallAt.y).solid, 'right click with wood places a wall for everyone');
+const woodLeft = alice.inventory.wood;
+a.action('use', wallAt);
+const blocker = game.spawn('slime', { x: alice.x, y: alice.y, speed: 0 });
+a.action('use', { x: Math.floor(alice.x), y: Math.floor(alice.y) });
+await sleep(150);
+check(alice.inventory.wood === woodLeft, 'nothing is placed on a solid tile or where someone stands');
+game.despawn(blocker.id);
+
+game.give(alice, 'pumpkin');
+game.give(alice, 'wood');
+a.action('craft', { recipe: 'jack-o-lantern' });
+await sleep(150);
+a.action('select', { slot: slotOf('jack-o-lantern') });
+a.action('use', lanternAt);
+await sleep(150);
+const lantern = [...game.entities.values()].find((e) => e.type === 'jack-o-lantern');
+check(lantern?.light > 0 && lantern.repels, 'a jack-o-lantern placed with right click gives light and scares monsters');
+const pack = [1, 2].map((i) => game.spawn('slime', { x: lantern.x + 2 + i * 0.7, y: lantern.y, speed: 0 }));
+await sleep(100);
+check(lantern.repels, 'two slimes are still scared of a jack-o-lantern');
+pack.push(game.spawn('slime', { x: lantern.x + 4.1, y: lantern.y, speed: 0 }));
+await sleep(100);
+check(!lantern.repels, 'a pack of three is brave enough to ignore it');
+for (const s of pack) game.despawn(s.id);
+game.despawn(lantern.id);
+
 // --- combat: parry, block, unguarded hits ------------------------------------
-const alice = a.server();
+a.action('select', { slot: slotOf('sword') });
+await sleep(60);
+const target = game.spawn('slime', { x: alice.x + 0.8, y: alice.y, speed: 0 });
+place(a, alice.x, alice.y, { x: 1, y: 0 });
+await sleep(60);
+a.action('attack');
+await sleep(60);
+check(target.hp === 1, `the sword deals 2 damage (slime at ${target.hp} of 3 hp)`);
+game.despawn(target.id);
+alice.hp = alice.maxHp;
 alice.dir = { x: 1, y: 0 };
 place(a, alice.x, alice.y, { x: 1, y: 0 });
 const slime = game.spawn('slime', { x: alice.x + 0.6, y: alice.y });

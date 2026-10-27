@@ -30,11 +30,13 @@ The integration lead keeps the game running for everyone and keeps five teams fr
 
 **What already exists in `modules/art/client.js`:** top-down drawers for every tile and entity in the game (the player with torch, sword, and shield, rotating toward the cursor; slimes with wind-up and stun animations; campfires with flames, embers, and a fuel bar; trees, rocks, water, sand, gravel), spark effects for parries and blocks, and synthesized sounds for every current event, including a war horn for hordes. `blip(freq, duration, type, volume, endFreq)` makes new sounds. Everything is drawn in code, so there are no asset files or licenses to worry about.
 
+**Halloween art direction (already in place):** `client/core/theme.js` defines the fonts (Creepster for display, Grenze for UI, loaded from Google Fonts with offline fallbacks) and the palette (pumpkin, candle, bone, ash, purple, moon, toxic, blood, night, panel). Use `game.theme.colors` and `game.font(px)` / `game.font(px, 'display')` everywhere. The art module also draws pumpkins, jack-o-lanterns (their candle gutters red when a pack ignores them), wood and stone blocks, dead trees, the held item in each player's hand, item icons (`registerDrawer('item:<name>', ...)`), and mining cracks. Any light can tint its glow with `lightColor`.
+
 **Goals, in priority order**
 
 1. **Keep up with the other teams (by 0:45 and ongoing).** Draw every new tile and entity the moment it appears: building tiles and villages (World), walls and doors (Survival), the snuffer and animals (Creatures), the firebolt (Player). Teams register placeholders in their own `client.js`; your drawers override them because the art module loads last. Ask each team for its type names early. Give every new event a sound.
-2. **Atmosphere (by 1:35).** A quiet procedural music loop in WebAudio: a gentle daytime melody and a low drone at night that intensifies during hordes (`net:horde`). Particles: wood chips when harvesting, embers rising from fires. A minimap of explored tiles on **M** (from `game.vision.seen`). Mute on **F4**.
-3. **Stretch.** A red tint for blood-moon nights, footprints, ripples in the water, map markers for `game.world.features`.
+2. **Atmosphere (by 1:35).** A quiet procedural music loop in WebAudio: a gentle daytime melody and a low drone at night that intensifies during hordes (`net:horde`). Particles: wood chips when harvesting, embers rising from fires. A minimap of explored tiles on **M** (from `game.vision.seen`). Mute on **F4**, and as a row in the Esc settings: `registerSetting('music', { label: 'Music', options: [true, false], default: true })`.
+3. **Stretch.** Bats crossing the moonlit screen, a full moon in the HUD, a red tint for blood-moon nights, footprints, ripples in the water, map markers for `game.world.features`.
 
 **Rules that matter most for art**
 

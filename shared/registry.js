@@ -5,7 +5,7 @@
 //   shared.js  registerTile, registerItem, registerRecipe, registerEntityType,
 //              registerSpell, registerWorldPass, registerKeyHint
 //   server.js  registerSystem, onAction, onEvent
-//   client.js  registerClientSystem, registerDrawer, registerHud, onEvent
+//   client.js  registerClientSystem, registerDrawer, registerHud, registerSetting, onEvent
 //
 // Tiles get numeric ids in registration order. Server and clients load
 // shared.js files in the same order, so ids match. Never register tiles
@@ -28,6 +28,7 @@ export const registries = {
   clientSystems: [],
   drawers: new Map(),        // entity type or 'tile:<name>' -> draw function
   huds: [],
+  settings: [],              // { key, label, options, default, names }, shown in the Esc panel
 };
 
 let currentModule = 'core';
@@ -40,7 +41,10 @@ function put(map, kind, name, value) {
 
 // ---------- shared.js ----------
 
-/** def: { color, solid, harvest: { item, count, becomes }, ...anything } */
+/** def: { color, solid, opaque, structure, interact,
+ *         harvest: { item, count, becomes },   mined by holding left click
+ *         hardness: seconds to mine by hand (default 1), tool: 'axe' | 'pickaxe' (that tool mines faster),
+ *         ...anything } */
 export function registerTile(name, def = {}) {
   if (registries.tileByName.has(name)) throw new Error(`Tile "${name}" registered twice`);
   const tile = { color: '#ff00ff', solid: false, ...def, id: registries.tiles.length, name, module: currentModule };
@@ -55,7 +59,10 @@ export function tileId(name) {
   return t.id;
 }
 
-/** def: { color, stack, equip: 'hand'|'head'|..., ...anything } */
+/** def: { color, equip: 'offhand'|..., gear: number (director gear score),
+ *         damage: melee damage while held, tool: 'axe'|'pickaxe', power: mining speed factor,
+ *         places: entity type | placesTile: tile name (right click places it), use: true (right click sends 'use'),
+ *         ...anything } */
 export function registerItem(name, def = {}) { put(registries.items, 'item', name, def); }
 
 /** def: { inputs: { wood: 5 }, output: { item: count } | undefined, places: entityType | undefined } */
@@ -104,10 +111,15 @@ export function onAction(name, fn) {
 /** fn(game, dt) runs every animation frame in the browser */
 export function registerClientSystem(name, fn) { registries.clientSystems.push({ name: `${currentModule}/${name}`, fn }); }
 
-/** key: entity type, or 'tile:<tileName>'.
+/** key: entity type, 'tile:<tileName>', or 'item:<itemName>'.
  *  entity drawer: fn(ctx, e, sx, sy, size, game)   (sx, sy = screen center)
- *  tile drawer:   fn(ctx, tile, px, py, size, tx, ty, game)  (px, py = top-left) */
+ *  tile drawer:   fn(ctx, tile, px, py, size, tx, ty, game)  (px, py = top-left)
+ *  item icon:     fn(ctx, item, cx, cy, size, game)  (hotbar and inventory; cx, cy = center) */
 export function registerDrawer(key, fn) { registries.drawers.set(key, fn); }
 
 /** fn(ctx, game, width, height) draws in screen space after the world */
 export function registerHud(name, fn) { registries.huds.push({ name: `${currentModule}/${name}`, fn }); }
+
+/** A row in the Esc settings panel. def: { label, options: [values], default, names: { value: label } }.
+ *  Stored per browser; read it with game.settings[key]. */
+export function registerSetting(key, def) { registries.settings.push({ ...def, key, module: currentModule }); }

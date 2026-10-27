@@ -48,7 +48,7 @@ try {
     for (let x = 1; x < a.world.w && !tree; x++)
       if (a.world.tile(x, y).name === 'tree' && !a.world.isSolid(x - 1, y)) tree = { x, y };
   a.send({ t: 'move', x: tree.x - 0.5, y: tree.y + 0.5, dir: { x: 1, y: 0 } });
-  a.send({ t: 'action', name: 'interact', data: tree });
+  a.send({ t: 'action', name: 'mine', data: tree });
   await waitFor(() => a.me()?.inventory?.wood === 1);
 
   // 1. A change to a team's server.js swaps the code in place: nobody disconnects.

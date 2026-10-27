@@ -1,13 +1,18 @@
 // TEAM PLAYER: movement, combat, magic, health, death.
-import { registerEntityType, registerKeyHint } from '../../shared/registry.js';
+import { registerEntityType, registerItem, registerKeyHint } from '../../shared/registry.js';
 
 // `light` is the torch every player carries: enough to see by, too weak to keep monsters away.
-registerEntityType('player', { hp: 10, maxHp: 10, light: 2.5, speed: 5 });
+// hotbar: 9 item names (or null) pointing into the inventory; the held item is hotbar[selected].
+registerEntityType('player', { hp: 10, maxHp: 10, light: 2.5, speed: 5, hotbar: [null, null, null, null, null, null, null, null, null], selected: 0 });
 
-registerKeyHint('WASD', 'move');
-registerKeyHint('mouse', 'aim');
-registerKeyHint('LMB/Space', 'swing');
-registerKeyHint('RMB/Shift', 'guard');
+// Every new player starts with a sword. `damage` is how hard a held item hits (default 1).
+registerItem('sword', { color: '#cfd3da', damage: 2 });
+
+registerKeyHint('WASD', 'move (W toward cursor)');
+registerKeyHint('LMB/Space', 'mine / attack');
+registerKeyHint('RMB', 'place / guard');
+registerKeyHint('Shift', 'guard');
+registerKeyHint('Esc', 'settings');
 
 // TODO(player team): spells, e.g.
 // registerSpell('firebolt', { cost: 2, cooldown: 1 });

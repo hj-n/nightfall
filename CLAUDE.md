@@ -39,7 +39,12 @@ Entity fields with meaning across teams:
 | Field | Meaning |
 |---|---|
 | `light` | Radius in tiles. Lights the night and decides what players can see after dusk (fog of war). Players carry `light: 2.5` (their torch). |
+| `lightColor` | Tint of the glow around a light (default warm orange). Jack-o-lanterns use `'#ff8a1a'`. |
 | `repels` | With `light`, monsters stay out of 80% of the light radius. Burning campfires set it; embers do not. |
+| `scares` | A number n: a system keeps `repels` on only while at most n hostiles are near. Jack-o-lanterns have `scares: 2`. |
+| `interactive` | Right click at this entity sends `interact` (campfires: feed wood). |
+| `hotbar`, `selected` | Player only: nine item names (or null) and the slot in hand. The held item is `hotbar[selected]`. |
+| `mining` | Player only: `{ x, y, p }` while mining a tile, `p` from 0 to 1 (Art draws the cracks). |
 | `hp`, `maxHp` | Makes an entity damageable through `game.damage()`. Non-players despawn at 0. |
 | `stunnedUntil` | Game time until which a creature does nothing. Set by parries. |
 | `guarding` | Player is holding guard (block with a shield, parry without). |
@@ -48,9 +53,11 @@ Entity fields with meaning across teams:
 | `hostile`, `threat` | A monster the game director counts against its budget, and how much it costs (default 1). |
 | `aggro` | Tiles within which a creature notices players (slimes 8, horde members 25). |
 
-Item flags: `gear` (a number) or `equip` adds to the group's gear score, which raises the director's budget. Tile flags: `structure: true` counts toward the settlement score.
+Item flags: `gear` (a number) or `equip` adds to the group's gear score, which raises the director's budget. `damage` is melee damage while held (default 1). `tool` (`'axe'`, `'pickaxe'`) and `power` divide the mining time of tiles with the same `tool`. `places: 'entityType'` or `placesTile: 'tileName'` lets right click place the item; `use: true` makes right click send a `use` action that your own `onAction('use', ...)` handles.
 
-Tile flags: `solid` blocks movement, `opaque` blocks line of sight, `structure` counts toward the settlement, `harvest: { item, count, becomes }` makes a tile harvestable with E.
+Tile flags: `solid` blocks movement, `opaque` blocks line of sight, `structure` counts toward the settlement, `harvest: { item, count, becomes }` makes a tile minable by holding the left button, `hardness` is the seconds that takes by hand (default 1), `tool` names the tool that mines it faster, and `interact: true` makes right click send `interact` at it (doors).
+
+Halloween art direction: draw with `game.theme.colors` (pumpkin, candle, bone, ash, purple, moon, toxic, blood, night, panel) and write text with `game.font(px)` or `game.font(px, 'display')`, both from `client/core/theme.js`. While `game.ui` is set (inventory, settings), skip world input and world overlays.
 
 The game director (`modules/creatures/director.js`) decides when and where monsters spawn at night. A new monster type spawns through it: give the type `hostile: true`, `hp`, and a `threat` cost, and add a spawn function like `spawnSlime` in `modules/creatures/server.js`. Tuning numbers live in `TUNING`; F3 in the browser shows the live state.
 
@@ -61,7 +68,18 @@ The game director (`modules/creatures/director.js`) decides when and where monst
 ```js
 import { registerTile, registerItem } from '../../shared/registry.js';
 registerItem('iron', { color: '#b0a090' });
-registerTile('iron-ore', { color: '#6d5f55', solid: true, harvest: { item: 'iron', becomes: 'gravel' } });
+registerTile('iron-ore', { color: '#6d5f55', solid: true, opaque: true, harvest: { item: 'iron', becomes: 'gravel' }, hardness: 8, tool: 'pickaxe' });
+```
+
+**An item that does something on right click** (`shared.js`, then `server.js`):
+
+```js
+registerItem('candy', { color: '#f6c', use: true });           // shared.js
+onAction('use', (game, player, { x, y }) => {                  // server.js
+  if (player.hotbar[player.selected] !== 'candy') return;      // every 'use' handler runs: skip items that are not ours
+  game.give(player, 'candy', -1);
+  player.hp = Math.min(player.maxHp, player.hp + 2);
+});
 ```
 
 **A new creature** (type in `shared.js`, behavior in `server.js`, look in `modules/art/client.js` or your own `client.js`):
@@ -121,7 +139,7 @@ game.broadcast('exploded', { x, y });                       // server.js
 onEvent('net:exploded', (game, { x, y }) => { /* ... */ }); // client.js
 ```
 
-An entity with a numeric `light` field lights up the night automatically. On the client, `game.canSee(x, y)` tells you whether the player can see a position right now (fog of war), and `game.targetTile()` gives the tile the player is aiming at with the mouse.
+An entity with a numeric `light` field lights up the night automatically. On the client, `game.canSee(x, y)` tells you whether the player can see a position right now (fog of war), and `game.targetTile()` gives the tile the player is aiming at with the mouse. Item icons for the hotbar come from `registerDrawer('item:<name>', (ctx, item, cx, cy, size, game) => ...)`.
 
 ## Testing
 

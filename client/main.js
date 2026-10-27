@@ -9,6 +9,8 @@ import { createInput } from './core/input.js';
 import { connect } from './core/net.js';
 import { render } from './core/render.js';
 import { createVision, updateVision, canSee } from './core/vision.js';
+import { THEME, font } from './core/theme.js';
+import { loadSettings, updateSettings } from './core/settings.js';
 
 const canvas = document.getElementById('game');
 const ctx = canvas.getContext('2d');
@@ -27,6 +29,11 @@ const game = {
   vision: null, // fog of war, see core/vision.js
   notices: [],  // on-screen messages, see notify()
   screen: { w: 0, h: 0 },
+  theme: THEME, // Halloween fonts and colors, see core/theme.js
+  font,         // game.font(14) or game.font(32, 'display')
+  settings: {}, // this viewer's settings (Esc panel), see core/settings.js
+  ui: null,     // name of the open panel ('settings', 'inventory', ...); world input pauses while set
+  selectedSlot: 0, // hotbar slot shown as selected (ahead of the server's me.selected)
   send: () => {},
 
   get me() { return this.entities.get(this.myId); },
@@ -65,12 +72,15 @@ const game = {
 window.game = game; // handy for poking at in the browser console
 
 game.failedModules = await loadModules('client', (p) => import(`../modules/${p}`));
+loadSettings(game);
 _attachListeners(game);
+document.fonts?.load(font(20, 'display'));
+document.fonts?.load(font(14));
 game.bus.on('net:hotswap', ({ failed }) =>
   game.notify(failed.length ? `Server code updated; ${failed.join(', ')} failed to load (see server log)` : 'Server code updated', 3,
     failed.length ? '#f88' : '#9cf'));
-game.bus.on('net:dusk', ({ day }) => game.notify(`Night ${day} falls`, 4, '#9ab'));
-game.bus.on('net:dawn', ({ day }) => game.notify(`Day ${day + 1} dawns`, 4, '#fe8'));
+game.bus.on('net:dusk', ({ day }) => game.notify(`Night ${day} falls`, 4, THEME.colors.moon));
+game.bus.on('net:dawn', ({ day }) => game.notify(`Day ${day + 1} dawns`, 4, THEME.colors.candle));
 
 function resize() {
   canvas.width = game.screen.w = innerWidth;
@@ -87,6 +97,7 @@ function frame(now) {
 
   if (game.world) {
     game.vision ||= createVision(game.world);
+    updateSettings(game);
     for (const s of registries.clientSystems) safely(s.name, s.fn, game, dt);
     // smooth other entities toward their latest server position
     const k = Math.min(1, dt * 12);

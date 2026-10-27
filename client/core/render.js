@@ -3,6 +3,8 @@
 import { TILE_PX } from '../../shared/config.js';
 import { registries } from '../../shared/registry.js';
 import { safely } from '../../shared/safe.js';
+import { THEME, font } from './theme.js';
+import { drawSettings } from './settings.js';
 
 const lightCanvas = document.createElement('canvas');
 const lctx = lightCanvas.getContext('2d');
@@ -12,7 +14,7 @@ const FOG_SEEN = 170;   // alpha over tiles seen before but not visible now
 const FOG_UNSEEN = 255; // alpha over tiles never seen
 
 function resetText(ctx) {
-  ctx.font = '14px ui-monospace, monospace';
+  ctx.font = font(14);
   ctx.textAlign = 'left';
   ctx.textBaseline = 'top';
   ctx.globalAlpha = 1;
@@ -32,7 +34,7 @@ export function render(game, ctx, w, h) {
   const cam = game.camera;
   if (me) { cam.x = me.x; cam.y = me.y; }
 
-  ctx.fillStyle = '#05050a';
+  ctx.fillStyle = THEME.colors.night;
   ctx.fillRect(0, 0, w, h);
   if (!game.world) return drawStatus(ctx, w, h, 'Connecting...');
 
@@ -71,7 +73,7 @@ export function render(game, ctx, w, h) {
     if (lightCanvas.width !== w || lightCanvas.height !== h) { lightCanvas.width = w; lightCanvas.height = h; }
     lctx.globalCompositeOperation = 'source-over';
     lctx.clearRect(0, 0, w, h);
-    lctx.fillStyle = `rgba(4, 6, 20, ${darkness})`;
+    lctx.fillStyle = `rgba(${THEME.nightTint.join(',')}, ${darkness})`;
     lctx.fillRect(0, 0, w, h);
     lctx.globalCompositeOperation = 'destination-out';
     for (const e of list) {
@@ -86,6 +88,23 @@ export function render(game, ctx, w, h) {
       lctx.fillRect(sx - r, sy - r, 2 * r, 2 * r);
     }
     ctx.drawImage(lightCanvas, 0, 0);
+
+    // warm glow around each light, tinted by its lightColor (jack-o-lanterns, fires, torches)
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.globalAlpha = 0.22 * darkness;
+    for (const e of list) {
+      if (!e.light) continue;
+      const sx = (e._rx - cam.x) * T + w / 2, sy = (e._ry - cam.y) * T + h / 2;
+      const r = e.light * T * 0.9;
+      if (sx < -r || sy < -r || sx > w + r || sy > h + r) continue;
+      const g = ctx.createRadialGradient(sx, sy, 0, sx, sy, r);
+      g.addColorStop(0, e.lightColor || THEME.glow);
+      g.addColorStop(1, 'rgba(0,0,0,0)');
+      ctx.fillStyle = g;
+      ctx.fillRect(sx - r, sy - r, 2 * r, 2 * r);
+    }
+    ctx.restore();
   }
 
   // --- fog of war ---
@@ -94,7 +113,7 @@ export function render(game, ctx, w, h) {
     if (fogCanvas.width !== cols || fogCanvas.height !== rows) { fogCanvas.width = cols; fogCanvas.height = rows; }
     const img = fctx.createImageData(cols, rows);
     const { seen, visible } = game.vision;
-    const W = game.world.w;
+    const W = game.world.w, fog = THEME.fog;
     for (let r = 0; r < rows; r++) {
       for (let c = 0; c < cols; c++) {
         const tx = x0 + c, ty = y0 + r, o = (r * cols + c) * 4;
@@ -103,7 +122,7 @@ export function render(game, ctx, w, h) {
           const i = ty * W + tx;
           a = visible[i] ? 0 : seen[i] ? FOG_SEEN : FOG_UNSEEN;
         }
-        img.data[o] = 4; img.data[o + 1] = 5; img.data[o + 2] = 12; img.data[o + 3] = a;
+        img.data[o] = fog[0]; img.data[o + 1] = fog[1]; img.data[o + 2] = fog[2]; img.data[o + 3] = a;
       }
     }
     fctx.putImageData(img, 0, 0);
@@ -121,23 +140,29 @@ export function render(game, ctx, w, h) {
   ctx.save();
   drawCoreHud(ctx, game, w, h);
   ctx.restore();
+  ctx.save();
+  resetText(ctx);
+  drawSettings(ctx, game, w, h);
+  ctx.restore();
 }
 
 function drawCoreHud(ctx, game, w, h) {
   const tod = game.timeOfDay();
   const players = [...game.entities.values()].filter((e) => e.type === 'player');
-  ctx.font = '14px ui-monospace, monospace';
+  const C = THEME.colors;
   ctx.textAlign = 'right';
   ctx.textBaseline = 'top';
-  ctx.fillStyle = 'rgba(0,0,0,0.5)';
-  ctx.fillRect(w - 190, 8, 182, 22 + players.length * 18);
-  ctx.fillStyle = tod.isNight ? '#9ab' : '#fe8';
-  ctx.fillText(`Day ${tod.day}  ${tod.clock}${tod.isNight ? '  night' : ''}`, w - 16, 12);
-  ctx.fillStyle = '#ddd';
-  players.forEach((p, i) => ctx.fillText(`${p.name}${p.id === game.myId ? ' (you)' : ''}`, w - 16, 32 + i * 18));
+  ctx.fillStyle = C.panel;
+  ctx.fillRect(w - 190, 8, 182, 34 + players.length * 18);
+  ctx.font = font(22, 'display');
+  ctx.fillStyle = tod.isNight ? C.moon : C.pumpkin;
+  ctx.fillText(`${tod.isNight ? 'Night' : 'Day'} ${tod.day}  ${tod.clock}`, w - 16, 12);
+  ctx.font = font(14);
+  ctx.fillStyle = C.bone;
+  players.forEach((p, i) => ctx.fillText(`${p.name}${p.id === game.myId ? ' (you)' : ''}`, w - 16, 42 + i * 18));
 
   // key hints, wrapped onto as many lines as the screen width needs
-  ctx.font = '13px ui-monospace, monospace';
+  ctx.font = font(12);
   const lines = [''];
   for (const k of registries.keyHints) {
     const part = `${k.key} ${k.label}`;
@@ -147,40 +172,43 @@ function drawCoreHud(ctx, game, w, h) {
   }
   ctx.textAlign = 'center';
   ctx.textBaseline = 'bottom';
-  ctx.fillStyle = 'rgba(255,255,255,0.7)';
-  lines.forEach((line, i) => ctx.fillText(line, w / 2, h - 10 - (lines.length - 1 - i) * 17));
+  ctx.fillStyle = 'rgba(239,230,210,0.6)';
+  lines.forEach((line, i) => ctx.fillText(line, w / 2, h - 8 - (lines.length - 1 - i) * 15));
 
   // notices (game.notify)
   game.notices = game.notices.filter((n) => n.until > performance.now());
-  ctx.font = '18px ui-monospace, monospace';
+  ctx.font = font(24, 'display');
   ctx.textAlign = 'center';
-  ctx.textBaseline = 'top';
+  ctx.textBaseline = 'middle';
   game.notices.slice(-4).forEach((n, i) => {
     ctx.globalAlpha = Math.min(1, (n.until - performance.now()) / 600);
-    ctx.fillStyle = 'rgba(0,0,0,0.55)';
+    ctx.fillStyle = C.panel;
     const tw = ctx.measureText(n.text).width;
-    ctx.fillRect(w / 2 - tw / 2 - 10, 14 + i * 30, tw + 20, 26);
+    ctx.fillRect(w / 2 - tw / 2 - 14, 12 + i * 36, tw + 28, 32);
     ctx.fillStyle = n.color;
-    ctx.fillText(n.text, w / 2, 18 + i * 30);
+    ctx.fillText(n.text, w / 2, 29 + i * 36);
   });
   ctx.globalAlpha = 1;
-  ctx.font = '14px ui-monospace, monospace';
+  ctx.font = font(14);
 
   if (game.failedModules.length) {
     ctx.textAlign = 'left';
     ctx.textBaseline = 'bottom';
-    ctx.fillStyle = '#f55';
+    ctx.fillStyle = C.blood;
     ctx.fillText(`Failed to load: ${game.failedModules.join(', ')} (see console)`, 10, h - 50);
   }
   if (!game.connected) drawStatus(ctx, w, h, 'Connection lost. Reconnecting...');
 }
 
 function drawStatus(ctx, w, h, text) {
-  ctx.fillStyle = 'rgba(0,0,0,0.6)';
-  ctx.fillRect(0, h / 2 - 30, w, 60);
-  ctx.fillStyle = '#fff';
-  ctx.font = '20px ui-monospace, monospace';
+  ctx.fillStyle = THEME.colors.panel;
+  ctx.fillRect(0, h / 2 - 60, w, 110);
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-  ctx.fillText(text, w / 2, h / 2);
+  ctx.fillStyle = THEME.colors.pumpkin;
+  ctx.font = font(48, 'display');
+  ctx.fillText('Nightfall', w / 2, h / 2 - 22);
+  ctx.fillStyle = THEME.colors.bone;
+  ctx.font = font(18);
+  ctx.fillText(text, w / 2, h / 2 + 24);
 }

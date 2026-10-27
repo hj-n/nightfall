@@ -4,7 +4,7 @@
 
 ## Pitch
 
-Nightfall is a multiplayer top-down survival game on a small procedural island. By day, players explore, cut trees, mine stone, and build. At night, the island goes dark and slimes crawl out of the shadows. Everyone carries a torch, but a torch only lets you see the monsters coming; the only safe ground lies within the light of a burning campfire, and campfires eat wood. A game director watches how strong the group has become and sends trouble to match. The game borrows ideas from Minicraft (a top-down tile world you can mine and rebuild), Don't Starve (darkness as the enemy, fires you must keep fed), Left 4 Dead and Darktide (a director that paces the threat), and classic top-down action adventures (melee, shields, villages, dungeons). Everything we make stays original: no borrowed names, sprites, or music.
+Nightfall is a Halloween-themed multiplayer top-down survival game on a small procedural island. By day, players explore, cut trees, mine stone, pick pumpkins, and build. At night, the island goes dark and slimes crawl out of the shadows. Everyone carries a torch, but a torch only lets you see the monsters coming; the only safe ground lies within the light of a burning campfire, and campfires eat wood. Carved jack-o-lanterns frighten off stragglers, but not a pack. A game director watches how strong the group has become and sends trouble to match. The game borrows ideas from Minicraft (a top-down tile world you can mine and rebuild), Don't Starve (darkness as the enemy, fires you must keep fed), Left 4 Dead and Darktide (a director that paces the threat), and classic top-down action adventures (melee, shields, villages, dungeons). Everything we make stays original: no borrowed names, sprites, or music.
 
 ## Design pillars
 
@@ -20,31 +20,37 @@ The core loop: explore, harvest, craft and build, survive the night around the f
 
 | Input | Action |
 |---|---|
-| WASD or arrows | Move |
+| WASD or arrows | Move. By default W walks toward the cursor, S backs away, and A and D strafe; the Esc settings switch to screen-relative movement (W is up) |
 | Mouse | Aim: the character turns freely toward the cursor |
-| Left mouse or Space | Swing |
-| Right mouse or Shift (hold) | Guard: block with a shield, otherwise parry |
-| E | Harvest the targeted tile, or feed wood to a campfire |
-| C | Build a campfire (5 wood) |
-| V | Craft a shield (3 wood, 2 stone) |
+| Left mouse or Space (hold) | Mine the targeted tile; with nothing to mine (or a monster under the cursor), swing |
+| Right mouse | Interact with what you aim at (feed wood to a campfire); otherwise use the held item (place a block, campfire, or jack-o-lantern); with a sword, tool, or empty hand, guard |
+| Shift (hold) | Guard: block with a shield, otherwise parry |
+| 1–9 or mouse wheel | Select a hotbar slot |
+| E (or Tab) | Inventory and crafting screen: hover an item and press 1–9 to put it in that slot; click a recipe to craft |
+| C / V | Quick-craft a campfire (5 wood) / a shield (3 wood, 2 stone) |
+| Esc | Settings: movement mode, aim indicator |
 | F3 | Director debug panel |
 
-The targeted tile is the one under the cursor when it is within reach, otherwise the tile in front of the player; a white outline marks it. Space and Shift mirror the mouse buttons for people on trackpads.
+The targeted tile is the one under the cursor when it is within reach, otherwise the tile in front of the player; an outline marks it, and a translucent ghost shows where a held block would go. Space mirrors the left button for people on trackpads.
 
 ## What the skeleton already does
 
 The repo runs out of the box and contains one thin vertical slice through every team's area:
 
-- **World.** A seeded island with water, sand, grass, forests, and stone, generated identically on server and clients.
+- **World.** A seeded island with water, sand, grass, forests (with the odd dead tree), stone, and pumpkin patches, generated identically on server and clients.
+- **Mining.** Hold the left button on a tree, rock, or pumpkin; cracks spread until it breaks. Each tile has a `hardness` (seconds by hand: a tree 1.8, stone 5, a pumpkin 0.6), and the matching tool divides it by its `power`: an axe chops a tree in under half a second, a pickaxe breaks stone in about a second.
+- **Hotbar, inventory, and crafting.** Nine hotbar slots fill up as you pick things up; 1–9 or the wheel picks the held item, which shows in your character's hand. E opens the inventory with a crafting list: campfire, jack-o-lantern, axe, pickaxe, shield. New players start with a sword (2 damage; everything else hits for 1).
+- **Building.** Right click with wood or stone places a wall block (`wood-wall`, `stone-block`; `structure: true`, so they count toward the settlement). Mining a block gives it back.
+- **Jack-o-lanterns.** Carve one from a pumpkin and a piece of wood and place it with right click. It never burns out and lights a radius of 3.5 tiles. One or two monsters keep out of its light; a pack of three or more walks right in, and its candle gutters red.
 - **True top-down view.** The camera looks straight down. Characters rotate freely toward the cursor, with a torch in the left hand and a sword in the right; trees, rocks, slimes, and fires are all drawn from above.
 - **Fog of war, per player.** Each player computes their own line of sight every frame: up to 13 tiles, blocked by trees and stone. You only see the monsters your own character can see. Tiles you have seen before stay on screen, dimmed; tiles you have never seen stay black. After dusk you see only what some light source illuminates: your torch, other players' torches, and campfires.
 - **Torch.** Every player carries a torch with a light radius of 2.5 tiles. It reveals monsters but does not keep them away.
-- **Campfires.** A campfire starts with 45 seconds of fuel (maximum 90) and shows a fuel bar. Each wood fed with E adds 20 seconds. Its light shrinks during the last 30 seconds; at zero it turns to embers that no longer protect anyone.
+- **Campfires.** Craft one (5 wood) and place it with right click. It starts with 45 seconds of fuel (maximum 90) and shows a fuel bar. Each wood fed by right-clicking it adds 20 seconds. Its light shrinks during the last 30 seconds; at zero it turns to embers that no longer protect anyone.
 - **Monsters and fire.** Slimes never step into the light of a burning campfire. They gather at its edge, and a slime caught inside when a new fire starts flees. A fire that burns out lets them in.
-- **Combat.** Swing with the left mouse button; three hits kill a slime, with a little knockback. Slimes telegraph each bite: they swell and turn orange for 0.4 seconds. Holding guard with a shield blocks every hit from the front. Without a shield, guard parries: pressing it in the 0.25 seconds before a hit cancels the hit, knocks the attacker back, and stuns it for 1.2 seconds. Hits from the side or behind always land.
+- **Combat.** Swing with the left mouse button; two sword hits (three with anything else) kill a slime, with a little knockback. Slimes telegraph each bite: they swell and turn orange for 0.4 seconds. Holding guard with a shield blocks every hit from the front. Without a shield, guard parries: pressing it in the 0.25 seconds before a hit cancels the hit, knocks the attacker back, and stuns it for 1.2 seconds. Hits from the side or behind always land.
 - **Game director.** A director paces each night through build-up, peak, and relax phases and sends a horde around midnight (two hordes from the third night on). The size of the threat scales with the number of players, their gear, the settlement, and the night number. See the section below.
 - **Death.** Dead players respawn at the island center with full health and keep their inventory.
-- **Presentation.** Code-drawn sprites, sparks on parries and blocks, on-screen notices (nightfall, dawn, hordes, code updates), synthesized sound effects, and a HUD.
+- **Presentation.** A Halloween look: the Creepster and Grenze fonts, a pumpkin, candle, bone, and violet palette (`client/core/theme.js`), a purple-black night, and a warm glow around every light. Code-drawn sprites, sparks on parries and blocks, on-screen notices (nightfall, dawn, hordes, code updates), synthesized sound effects, a hotbar with hearts, and an Esc settings panel stored per browser.
 - **Live code updates.** `npm run dev` swaps new server code into the running game without disconnecting anyone, and restarts (keeping all state) only when the data model changes. See "Development workflow".
 
 ## Tech stack
@@ -83,7 +89,7 @@ Six ideas hold the design together:
 - **Deterministic world.** Server and clients run the same world passes with the same seed, so the network carries only tile edits, never the map. World passes must use the `rng` they receive and the noise helpers in `shared/rng.js`; a single `Math.random()` call desynchronizes everyone.
 - **Registries.** Teams add content by calling `registerTile`, `registerItem`, `registerSystem`, and so on from their own folder. Nobody edits a central list, so merge conflicts nearly vanish.
 - **Entities as plain objects (ECS-lite).** An entity is `{ id, type, x, y, ...components }`, for example `{ id: 7, type: 'slime', x: 81.5, y: 90.2, hp: 3, speed: 1.6 }`. Systems are functions that run every tick over the entities they care about. Fields that start with `_` stay private to the side that set them and never travel over the network.
-- **Shared fields as interfaces.** A few fields carry meaning across teams. On entities: `light` (radius in tiles) lights the night and defines what players can see; `repels: true` keeps monsters out of 80% of that radius; `hostile` and `threat` tell the director what counts as a monster and how much; `stunnedUntil` freezes a creature; `hp` makes an entity damageable. On items, `gear` (or `equip`) counts toward the group's gear score; on tiles, `structure: true` counts toward the settlement.
+- **Shared fields as interfaces.** A few fields carry meaning across teams. On entities: `light` (radius in tiles) lights the night and defines what players can see, and `lightColor` tints its glow; `repels: true` keeps monsters out of 80% of that radius, and `scares: n` makes it hold only while at most n monsters are near; `hostile` and `threat` tell the director what counts as a monster and how much; `stunnedUntil` freezes a creature; `hp` makes an entity damageable; `interactive: true` makes right click send `interact` at it. On items, `gear` (or `equip`) counts toward the group's gear score, `damage` is melee damage while held, `tool` and `power` speed up mining, and `places`, `placesTile`, or `use: true` make right click use the item. On tiles, `structure: true` counts toward the settlement, `hardness` and `tool` set mining time, and `interact: true` works like `interactive`. On players, `hotbar` (nine item names) and `selected` say what is in hand: `hotbar[selected]`.
 - **One damage pipeline.** All damage goes through `game.damage(target, amount, source)`, which first emits a `damage` event. Listeners can lower `hit.amount` or set `hit.cancelled`, which is how blocking and parrying work, and how armor, buffs, or friendly-fire rules would work.
 - **Error isolation.** Every system, handler, drawer, and HUD runs inside a `try/catch`. A bug in one team's code logs an error at most every five seconds; the game keeps running.
 
@@ -119,8 +125,8 @@ At midnight (at 35% and 75% of the night from the third night on), a **horde** o
 
 | Function | Call from | Purpose |
 |---|---|---|
-| `registerTile(name, { color, solid, opaque, structure, harvest })` | `shared.js` | New tile type. `solid` blocks movement, `opaque` blocks sight, `structure` counts toward the settlement, `harvest: { item, count, becomes }` makes it harvestable with E. |
-| `registerItem(name, { gear, equip, ... })` | `shared.js` | New item type. `gear` (or `equip`) adds to the gear score. |
+| `registerTile(name, { color, solid, opaque, structure, harvest, hardness, tool, interact })` | `shared.js` | New tile type. `solid` blocks movement, `opaque` blocks sight, `structure` counts toward the settlement, `harvest: { item, count, becomes }` makes it minable with the left button, `hardness` is the seconds that takes by hand (default 1), `tool` (`'axe'`, `'pickaxe'`) names the tool that mines it faster, `interact` makes right click send `interact` at it. |
+| `registerItem(name, { gear, equip, damage, tool, power, places, placesTile, use, ... })` | `shared.js` | New item type. `gear` (or `equip`) adds to the gear score; `damage` is melee damage while held (default 1); `tool` and `power` divide the mining time of matching tiles; `places` (entity type) or `placesTile` (tile name) lets right click place it; `use: true` makes right click send `use` for your own handler. |
 | `registerRecipe(name, { inputs, output, places })` | `shared.js` | Crafting recipe. `places` spawns an entity in front of the player. |
 | `registerEntityType(type, defaults)` | `shared.js` | New entity type. Defaults must be plain data. Monsters need `hostile: true`, `hp`, and optionally `threat`. |
 | `registerSpell(name, def)` | `shared.js` | New spell definition. |
@@ -130,14 +136,15 @@ At midnight (at 35% and 75% of the night from the third night on), a **horde** o
 | `onAction(name, fn(game, player, data))` | `server.js` | Handles `game.sendAction(name, data)` from a client. |
 | `onEvent(name, fn(game, ...args))` | `server.js`, `client.js` | Listens on that side's event bus. |
 | `registerClientSystem(name, fn(game, dt))` | `client.js` | Runs every frame in the browser. |
-| `registerDrawer(type or 'tile:name', fn)` | `client.js` | Draws an entity type or tile type. |
+| `registerDrawer(type, 'tile:name', or 'item:name', fn)` | `client.js` | Draws an entity type, a tile type, or an item icon (hotbar, inventory, a player's hand). |
 | `registerHud(name, fn(ctx, game, w, h))` | `client.js` | Draws in screen space, after the world and the fog. |
+| `registerSetting(key, { label, options, default, names })` | `client.js` | Adds a row to the Esc settings panel, stored per browser; read it as `game.settings[key]`. |
 
 ### The `game` object
 
 On the **server**, systems and handlers receive `game` with `world`, `entities`, `time`, `bus`, `director`, and these helpers: `spawn(type, props)`, `despawn(id)`, `players()`, `near(x, y, r, filter)`, `damage(target, amount, source)`, `knockback(entity, fromX, fromY, dist)`, `setTile(x, y, name)`, `broadcast(name, data)`, `sendTo(playerId, name, data)`, `teleport(player, x, y)`, `give(entity, item, n)`, `has(entity, item, n)`, and `timeOfDay()`.
 
-On the **client**, `game` has `world`, `entities`, `me`, `myId`, `input`, `camera`, `vision`, and the helpers `sendAction(name, data)`, `notify(text, seconds, color)`, `targetTile()`, `facingTile()`, `canSee(x, y)`, `screenToWorld(sx, sy)`, `worldToScreen(x, y)`, and `timeOfDay()`. Input uses key codes: `game.input.down('KeyW')` while held, `game.input.pressed('KeyE')` once per press, `game.input.clicked(0)` once per left click, and `game.input.mouseDown(2)` while the right button is held.
+On the **client**, `game` has `world`, `entities`, `me`, `myId`, `input`, `camera`, `vision`, and the helpers `sendAction(name, data)`, `notify(text, seconds, color)`, `targetTile(reach)`, `facingTile()`, `canSee(x, y)`, `screenToWorld(sx, sy)`, `worldToScreen(x, y)`, and `timeOfDay()`. Input uses key codes: `game.input.down('KeyW')` while held, `game.input.pressed('KeyE')` once per press, `game.input.clicked(0)` once per left click, `game.input.mouseDown(2)` while the right button is held, and `game.input.wheel()` for wheel steps this frame. It also has `theme` (colors) and `font(px, 'ui' | 'display')` for the Halloween look, `settings` (this viewer's Esc settings), `ui` (the name of an open panel such as `'inventory'`; world input pauses while it is set), and `selectedSlot` (the hotbar slot in hand, ahead of the server's `me.selected`).
 
 `timeOfDay()` returns `{ phase, darkness, isNight, nightProgress, nightLength, day, clock }`.
 
@@ -157,7 +164,8 @@ On the **client**, `game` has `world`, `entities`, `me`, `myId`, `input`, `camer
 | `net:swing` | client | `{ id }` | player |
 | `net:parry`, `net:block` | client | `{ id, x, y }` (parry also `target`) | player |
 | `net:died` | client | `{}` (to the victim only) | player |
-| `net:harvested` | client | `{ x, y, item, by }` | survival |
+| `net:harvested` | client | `{ x, y, item, by }` (a mined tile broke) | survival |
+| `net:placed` | client | `{ x, y, item, by }` | survival |
 | `net:crafted` | client | `{ recipe, by }` | survival |
 | `net:fed`, `net:fireOut` | client | `{ id, ... }` | survival |
 | `net:horde` | client | `{ from, count, target }` | creatures (director) |
@@ -166,15 +174,15 @@ On the **client**, `game` has `world`, `entities`, `me`, `myId`, `input`, `camer
 | `tileChanged` | client | x, y, id | core |
 | `entityAppeared`, `entityGone` | client | entity | core |
 
-Actions handled today: `attack` and `guard` (player), `interact` and `craft` (survival). When you add an event or action, tell the integration lead so it lands in this table.
+Actions handled today: `attack` and `guard` (player); `mine {x, y}` or `mine {stop}`, `use {x, y}`, `interact {x, y}`, `craft {recipe}`, `select {slot}`, and `hotbar {slot, item}` (survival). Every handler of an action runs, so a handler for `use` or `interact` returns early when the held item or the target is not its own. When you add an event or action, tell the integration lead so it lands in this table.
 
 ## Teams
 
 | # | Team | Folder | Owns | Goal by integration 1 (0:45) | Goal by freeze (1:35) | Stretch |
 |---|---|---|---|---|---|---|
 | 1 | World | `modules/world` | Terrain, biomes, villages, dungeons, resources | Villages: small houses built from wall tiles (`structure: true`), with paths between them | Caves or dungeons with ore tiles worth mining | New biomes (snow, desert), trees that regrow, berries to forage |
-| 2 | Player | `modules/player` | Movement, combat, magic, health, death | Weapon feel: a health bar over damaged entities, invulnerability frames, a dodge roll | Two or three spells with mana, such as a firebolt projectile that carries `light` | Weapon types (items with `gear`), experience and levels |
-| 3 | Survival | `modules/survival` | Items, equipment, crafting, building, hunger, fire | Placeable walls and doors (`structure: true`); slimes cannot pass walls | Hunger and food; craftable torches that burn out; a stone fire pit that burns longer | Crafting menu, tools that harvest faster, chests, farming |
+| 2 | Player | `modules/player` | Movement, combat, magic, health, death | Weapon feel: a health bar over damaged entities, invulnerability frames, a dodge roll | Two or three spells with mana, held in the hotbar and cast with right click, such as a firebolt projectile that carries `light` | Weapon types (items with `damage` and `gear`), experience and levels |
+| 3 | Survival | `modules/survival` | Items, equipment, crafting, building, mining, hunger, fire | Doors (`placesTile`, opened and closed with right click); better tools (stone axe and pickaxe) | Hunger and food; craftable torches that burn out; a stone fire pit that burns longer | Chests, farming, tools that yield more |
 | 4 | Creatures | `modules/creatures` | Monsters, animals, NPCs, quests, the director | A second monster with its own `threat` cost, for example one that ignores fire or snuffs out campfires | Tune the director with F3 while others play; villagers with procedural quests ("bring 5 wood") | A blood-moon raid every third night; a dungeon boss |
 | 5 | Integration and art | core files and `modules/art` | Server, netcode, merging, sprites, sound | Clean merge with everyone on the shared server | A sprite and sound for every new tile and entity | A music loop, particles, screen shake, a minimap of explored tiles |
 

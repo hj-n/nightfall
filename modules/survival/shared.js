@@ -1,21 +1,39 @@
 // TEAM SURVIVAL: items, equipment, crafting, building, hunger, fire.
 import { registerItem, registerRecipe, registerEntityType, registerKeyHint } from '../../shared/registry.js';
 
-registerItem('wood',   { color: '#8b5a2b' });
-registerItem('stone',  { color: '#999' });
+// placesTile / places: right click with the item in hand puts it into the world.
+registerItem('wood',   { color: '#8b5a2b', placesTile: 'wood-wall' });
+registerItem('stone',  { color: '#999', placesTile: 'stone-block' });
 registerItem('shield', { color: '#a0703a', equip: 'offhand' });
+registerItem('pumpkin', { color: '#e8761e' });
+
+// Tools: mining a tile whose `tool` matches takes hardness / power seconds instead of hardness.
+registerItem('axe',     { color: '#b08850', tool: 'axe', power: 4 });
+registerItem('pickaxe', { color: '#9aa0aa', tool: 'pickaxe', power: 4 });
+
+registerItem('campfire',       { color: '#f80', places: 'campfire' });
+registerItem('jack-o-lantern', { color: '#ff8a1a', places: 'jack-o-lantern' });
 
 // A recipe either gives items (output) or places an entity in front of the player (places).
-registerRecipe('campfire', { inputs: { wood: 5 }, places: 'campfire' });
-registerRecipe('shield',   { inputs: { wood: 3, stone: 2 }, output: { shield: 1 } });
+registerRecipe('campfire',       { inputs: { wood: 5 }, output: { campfire: 1 } });
+registerRecipe('jack-o-lantern', { inputs: { pumpkin: 1, wood: 1 }, output: { 'jack-o-lantern': 1 } });
+registerRecipe('axe',            { inputs: { wood: 3 }, output: { axe: 1 } });
+registerRecipe('pickaxe',        { inputs: { wood: 4 }, output: { pickaxe: 1 } });
+registerRecipe('shield',         { inputs: { wood: 3, stone: 2 }, output: { shield: 1 } });
 
 // fuel is in seconds of burn time. A burning fire (repels: true) keeps monsters
-// out of its light; its light shrinks as the fuel runs low.
-registerEntityType('campfire', { fuel: 45, maxFuel: 90, light: 6, repels: true, color: '#f80' });
+// out of its light; its light shrinks as the fuel runs low. interactive: right
+// click on it sends 'interact' (feeding it wood).
+registerEntityType('campfire', { fuel: 45, maxFuel: 90, light: 6, repels: true, interactive: true, color: '#f80' });
 
-registerKeyHint('E', 'harvest/feed fire');
+// Jack-o-lanterns never burn out. They scare monsters off (repels) unless more
+// than `scares` hostiles are close: a pack of three is brave enough to walk in.
+registerEntityType('jack-o-lantern', { light: 3.5, lightColor: '#ff8a1a', repels: true, scares: 2, color: '#e8761e' });
+
+registerKeyHint('1-9/wheel', 'hotbar');
+registerKeyHint('E', 'inventory & crafting');
+registerKeyHint('RMB on fire', 'feed it');
 registerKeyHint('C', 'campfire (5 wood)');
 registerKeyHint('V', 'shield (3 wood 2 stone)');
 
-// TODO(survival team): hunger and food, walls and doors (as tiles), tools
-// that harvest faster, a crafting menu, chests.
+// TODO(survival team): hunger and food, doors (as tiles), chests.

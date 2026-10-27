@@ -19,7 +19,7 @@ You decide what lives on the island and how frightening each night becomes. The 
 2. **Animals and tuning (by 1:35).**
    - Daytime animals (a deer or boar) that wander, flee from players, and drop `meat` when killed (`onEvent('killed', ...)`). Register the `meat` item with a `food` value; Survival makes it edible and cookable. Animals are not `hostile`, so the director ignores them.
    - **Tune the director while others play.** Keep F3 open during the integration sessions and adjust `TUNING` in `director.js`: saving it hot-swaps the change into the running game. Aim for a midnight that feels dangerous but survivable.
-3. **Stretch.** Villagers in World's villages (`game.world.features`, type `village`) who hand out procedural quests when a player presses E near them ("bring 5 wood", reward: a shield). Add your own `interact` handler and ignore targets that are not villagers. A blood-moon raid every third night (bigger hordes; ask Art for a red tint). A dungeon boss at the `dungeon` feature.
+3. **Stretch.** Villagers in World's villages (`game.world.features`, type `village`) who hand out procedural quests when a player right-clicks them ("bring 5 pumpkins", reward: a shield). Give villagers `interactive: true` so right click sends `interact`, and add your own `interact` handler that ignores targets that are not villagers. A blood-moon raid every third night (bigger hordes; ask Art for a red tint). A dungeon boss at the `dungeon` feature.
 
 ## What other teams expect from you
 

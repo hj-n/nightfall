@@ -1,27 +1,85 @@
-// TEAM PLAYER (client): local movement, aiming and combat input. We own our
+// TEAM PLAYER (client): local movement, aiming, and mouse input. We own our
 // own position; the server trusts it, so movement feels instant on bad Wi-Fi.
-// Shift and Space mirror the mouse buttons for people on trackpads.
-import { registerClientSystem } from '../../shared/registry.js';
+//   left mouse / Space (hold)  mine the targeted tile, or swing when there is nothing to mine
+//   right mouse                interact with what you aim at (feed a fire), else use the
+//                              held item (place a block, a jack-o-lantern), else guard
+//   Shift (hold)               always guards
+import { registries, registerClientSystem, registerHud } from '../../shared/registry.js';
+import { TILE_PX } from '../../shared/config.js';
+
+const REACH = 1.8;       // tiles: mining and swinging
+const PLACE_REACH = 2.5; // tiles: right-click use and place
+const AIM_DEAD_ZONE = 0.4; // tiles around the player where the cursor does not turn us
 
 let sendTimer = 0;
 let guarding = false;
+let mining = null;  // the tile we asked the server to mine, or null
+let useTimer = 0;   // right-click repeat while held
+
+const heldItem = (game) => registries.items.get(game.me?.hotbar?.[game.selectedSlot]);
+const usable = (def) => !!(def && (def.places || def.placesTile || def.use));
+
+// Where the player is aiming, in world coordinates.
+function aimPoint(game) {
+  const me = game.me, m = game.input.mouse;
+  return m.active ? game.screenToWorld(m.x, m.y) : { x: me.x + me.dir.x * 0.8, y: me.y + me.dir.y * 0.8 };
+}
+
+// A tile flagged `interact`, or an entity flagged `interactive`, at the targeted tile.
+function interactTarget(game) {
+  const t = game.targetTile(2);
+  if (game.world.tile(t.x, t.y)?.interact) return t;
+  for (const e of game.entities.values()) {
+    if (e.interactive && Math.floor(e.x) === t.x && Math.floor(e.y) === t.y) return t;
+  }
+  return null;
+}
 
 registerClientSystem('movement', (game, dt) => {
   const me = game.me;
   if (!me) return;
   const k = game.input;
+  const free = !game.ui; // a panel (inventory, settings) takes the mouse
+
+  // --- face the mouse first, so facing-relative movement uses this frame's aim ---
+  if (free && k.mouse.active) {
+    const m = game.screenToWorld(k.mouse.x, k.mouse.y);
+    const ax = m.x - me.x, ay = m.y - me.y, len = Math.hypot(ax, ay);
+    if (len > AIM_DEAD_ZONE) me.dir = { x: ax / len, y: ay / len };
+  }
+
+  // --- right mouse: interact, use the held item, or guard ---
+  let rightGuard = false;
+  useTimer -= dt;
+  if (free && k.mouseDown(2)) {
+    const it = interactTarget(game);
+    const def = heldItem(game);
+    if (it) {
+      if (k.clicked(2)) game.sendAction('interact', it);
+    } else if (usable(def)) {
+      if (k.clicked(2) || useTimer <= 0) { useTimer = 0.25; game.sendAction('use', game.targetTile(PLACE_REACH)); }
+    } else {
+      rightGuard = true;
+    }
+  }
 
   // --- guard (block with a shield, parry without one) ---
-  const guard = k.mouseDown(2) || k.down('ShiftLeft') || k.down('ShiftRight');
+  const guard = rightGuard || (free && (k.down('ShiftLeft') || k.down('ShiftRight')));
   if (guard !== guarding) {
     guarding = guard;
     me.guarding = guard;
     game.sendAction('guard', { on: guard });
   }
 
-  // --- move with WASD ---
-  let dx = (k.down('KeyD') || k.down('ArrowRight') ? 1 : 0) - (k.down('KeyA') || k.down('ArrowLeft') ? 1 : 0);
-  let dy = (k.down('KeyS') || k.down('ArrowDown') ? 1 : 0) - (k.down('KeyW') || k.down('ArrowUp') ? 1 : 0);
+  // --- move: relative to facing (W toward the cursor) or to the screen, see Esc settings ---
+  const fwd = (k.down('KeyW') || k.down('ArrowUp') ? 1 : 0) - (k.down('KeyS') || k.down('ArrowDown') ? 1 : 0);
+  const side = (k.down('KeyD') || k.down('ArrowRight') ? 1 : 0) - (k.down('KeyA') || k.down('ArrowLeft') ? 1 : 0);
+  let dx = side, dy = -fwd;
+  if (game.settings.movement !== 'screen' && k.mouse.active) {
+    const d = me.dir; // right of facing is (-d.y, d.x) with y pointing down the screen
+    dx = d.x * fwd - d.y * side;
+    dy = d.y * fwd + d.x * side;
+  }
   if (dx || dy) {
     const len = Math.hypot(dx, dy);
     dx /= len; dy /= len;
@@ -29,15 +87,7 @@ registerClientSystem('movement', (game, dt) => {
     // move each axis separately so we slide along walls
     if (!game.world.blocked(me.x + dx * step, me.y)) me.x += dx * step;
     if (!game.world.blocked(me.x, me.y + dy * step)) me.y += dy * step;
-  }
-
-  // --- face the mouse (or the walking direction until the mouse moves) ---
-  if (k.mouse.active) {
-    const m = game.screenToWorld(k.mouse.x, k.mouse.y);
-    const ax = m.x - me.x, ay = m.y - me.y, len = Math.hypot(ax, ay);
-    if (len > 0.05) me.dir = { x: ax / len, y: ay / len };
-  } else if (dx || dy) {
-    me.dir = { x: dx, y: dy };
+    if (!k.mouse.active) me.dir = { x: dx, y: dy };
   }
 
   sendTimer -= dt;
@@ -46,5 +96,37 @@ registerClientSystem('movement', (game, dt) => {
     game.send({ t: 'move', x: me.x, y: me.y, dir: me.dir });
   }
 
-  if (k.clicked(0) || k.pressed('Space')) game.sendAction('attack', {});
+  // --- left mouse / Space: mine a harvestable tile, otherwise swing ---
+  const holding = free && (k.mouseDown(0) || k.down('Space'));
+  let target = null;
+  if (holding) {
+    const p = aimPoint(game);
+    const monster = [...game.entities.values()].some((e) => e.hostile && e.hp > 0 && Math.hypot(e._rx - p.x, e._ry - p.y) < 0.7);
+    const t = game.targetTile(REACH);
+    if (!monster && game.world.tile(t.x, t.y)?.harvest) target = t;
+  }
+  if (target && (!mining || mining.x !== target.x || mining.y !== target.y)) {
+    mining = target;
+    game.sendAction('mine', target);
+  } else if (!target && mining) {
+    mining = null;
+    game.sendAction('mine', { stop: true });
+  }
+  if (free && !target && (k.clicked(0) || k.pressed('Space'))) game.sendAction('attack', {});
+});
+
+// A faint wedge in front of your character: where swings, mining, and placing land.
+registerHud('aim', (ctx, game) => {
+  const me = game.me;
+  if (!me || game.ui || !game.settings.showAim) return;
+  const p = game.worldToScreen(me.x, me.y), a = Math.atan2(me.dir.y, me.dir.x), r = REACH * TILE_PX, half = 0.35;
+  ctx.fillStyle = 'rgba(255,122,26,0.10)';
+  ctx.strokeStyle = 'rgba(255,122,26,0.35)';
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.moveTo(p.x + Math.cos(a) * TILE_PX * 0.35, p.y + Math.sin(a) * TILE_PX * 0.35);
+  ctx.arc(p.x, p.y, r, a - half, a + half);
+  ctx.closePath();
+  ctx.fill();
+  ctx.stroke();
 });

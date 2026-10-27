@@ -1,6 +1,6 @@
 # Nightfall
 
-A multiplayer top-down survival game, built in two hours by 10 to 13 people at the CA3 retreat. Harvest, build, and survive the night on a procedural island.
+A Halloween multiplayer top-down survival game, built in two hours by 10 to 13 people at the CA3 retreat. Mine, build, carve jack-o-lanterns, and survive the night on a procedural island.
 
 ## Quick start
 
@@ -13,7 +13,7 @@ npm run dev
 
 Open `http://localhost:8080/?name=YourName`. Open a second tab to get a second player.
 
-Controls: **WASD** move, **mouse** aim, **left click** swing, **right click** (hold) block or parry, **E** harvest or feed a fire, **C** campfire, **V** shield, **F3** director debug. `DESIGN.md` has the full list.
+Controls: **WASD** move (W toward the cursor), **mouse** aim, **left click** (hold) mine or swing, **right click** feed a fire, place the held item, or guard, **Shift** guard, **1-9** or **wheel** hotbar, **E** inventory and crafting, **C** campfire, **V** shield, **Esc** settings, **F3** director debug. `DESIGN.md` has the full list.
 
 ## For jam participants
 

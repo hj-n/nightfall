@@ -4,7 +4,7 @@
 export function createInput(canvas) {
   const down = new Set();
   const pressed = new Set();
-  const mouse = { x: 0, y: 0, active: false, down: new Set(), clicked: new Set() };
+  const mouse = { x: 0, y: 0, active: false, down: new Set(), clicked: new Set(), wheel: 0 };
   const BLOCK = new Set(['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Tab', 'F3']);
 
   const typing = () => ['INPUT', 'TEXTAREA'].includes(document.activeElement?.tagName);
@@ -22,6 +22,7 @@ export function createInput(canvas) {
   canvas.addEventListener('mousedown', (e) => { mouse.down.add(e.button); mouse.clicked.add(e.button); });
   addEventListener('mouseup', (e) => mouse.down.delete(e.button));
   canvas.addEventListener('contextmenu', (e) => e.preventDefault());
+  canvas.addEventListener('wheel', (e) => { e.preventDefault(); mouse.wheel += Math.sign(e.deltaY); }, { passive: false });
 
   return {
     mouse,
@@ -33,6 +34,8 @@ export function createInput(canvas) {
     clicked: (button = 0) => mouse.clicked.has(button),
     /** mouse button held right now */
     mouseDown: (button = 0) => mouse.down.has(button),
-    endFrame() { pressed.clear(); mouse.clicked.clear(); },
+    /** mouse wheel steps this frame: positive = scrolled down */
+    wheel: () => mouse.wheel,
+    endFrame() { pressed.clear(); mouse.clicked.clear(); mouse.wheel = 0; },
   };
 }
