@@ -31,7 +31,7 @@ export const game = {
   world: World.generate(WORLD_W, WORLD_H, SEED),
   entities: new Map(),
   bus: createBus(),
-  time: Number(process.env.START_TIME) || 0, // e.g. START_TIME=160 starts just before dusk
+  time: Number(process.env.START_TIME) || 0, // e.g. START_TIME=160 starts at dusk
   nextId: 1,
 
   timeOfDay() { return timeOfDay(this.time); },

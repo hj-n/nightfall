@@ -21,4 +21,4 @@ Controls: **WASD** move, **E** harvest, **C** campfire (5 wood), **Space** attac
 2. Point your coding agent at `CLAUDE.md` (agents other than Claude Code read `AGENTS.md`, which points there).
 3. Work only in `modules/<your team>/`, commit often, and `git pull --rebase` before you push.
 
-`npm test` runs a headless smoke test. `START_TIME=160 npm start` jumps to dusk.
+`npm test` runs a headless smoke test. `START_TIME=160 npm start` starts at dusk.

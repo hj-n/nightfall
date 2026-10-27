@@ -89,7 +89,7 @@ An entity with a numeric `light` field (radius in tiles) lights up the night aut
 ## Testing
 
 - `npm start`, then open `http://localhost:8080/?name=A` and `http://localhost:8080/?name=B` in two tabs.
-- `START_TIME=160 npm start` starts just before dusk, so you can test night features right away. `SEED=1234` fixes the island.
+- `START_TIME=160 npm start` starts at dusk, so you can test night features right away. `SEED=1234` fixes the island.
 - `npm test` runs a headless smoke test of the core loop. Run it before pushing anything that touches harvesting, crafting, combat, or spawning.
 - `window.game` in the browser console exposes the client state.
 - Errors inside systems, handlers, and drawers are caught and logged (at most once every five seconds per site), so check the server terminal and the browser console after each change.

@@ -159,7 +159,7 @@ Everyone clones the repo and commits directly to `main`. Pull requests would cos
 ```
 npm install
 npm start                      # http://localhost:8080/?name=You
-START_TIME=160 npm start       # start just before dusk
+START_TIME=160 npm start       # start at dusk
 SEED=1234 npm start            # the same island every time
 PORT=9000 npm start
 npm test                       # headless smoke test with three clients
