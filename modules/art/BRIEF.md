@@ -12,8 +12,8 @@ The integration lead keeps the game running for everyone and keeps five teams fr
 
 - Push the repo to GitHub and share the link; check that everyone has Node.js 20 or newer.
 - Run the shared server with `npm run dev` on the laptop that will drive the projector, and check that another laptop can connect to the network address it prints. Eduroam often blocks laptop-to-laptop traffic; fall back to a phone hotspot or a travel router.
-- Choose a seed (`SEED=...`) whose spawn area looks good, so the demo island is known in advance.
-- Windows users set environment variables differently. In PowerShell: `$env:START_PHASE=0.65; npm run dev`.
+- Choose a seed (`node server/dev.js SEED=...`) whose spawn area looks good, so the demo island is known in advance.
+- Settings such as `SEED`, `START_PHASE`, and `DAY_LENGTH` go after `node server/dev.js` as `NAME=value` arguments; that works in PowerShell, cmd, and bash alike.
 
 **During the session**
 

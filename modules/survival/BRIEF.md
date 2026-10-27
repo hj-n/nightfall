@@ -38,7 +38,7 @@ You decide what players make and what they need. The central tension of the game
 
 ## Testing
 
-Run `START_PHASE=0.65 npm run dev`, build a ring of walls around a campfire before night falls, and watch the slimes fail to get in. Open F3 to see the settlement score rise with every wall.
+Run `npm run dev:night` (dusk start, three-minute days), build a ring of walls around a campfire before night falls, and watch the slimes fail to get in. Open F3 to see the settlement score rise with every wall.
 
 ## Starter prompt for your agent
 

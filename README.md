@@ -1,6 +1,6 @@
 # Nightfall
 
-A multiplayer top-down survival game, built in two hours by ten people at the CA3 retreat. Harvest, build, and survive the night on a procedural island.
+A multiplayer top-down survival game, built in two hours by 10 to 13 people at the CA3 retreat. Harvest, build, and survive the night on a procedural island.
 
 ## Quick start
 
@@ -17,8 +17,8 @@ Controls: **WASD** move, **mouse** aim, **left click** swing, **right click** (h
 
 ## For jam participants
 
-1. Find your team and folder in `DESIGN.md`.
+1. Find your team and folder in `DESIGN.md`. Teams are pairs; with more than ten people, some become trios.
 2. Point your coding agent at `CLAUDE.md` (agents other than Claude Code read `AGENTS.md`, which points there).
-3. Work only in `modules/<your team>/`, commit often, and `git pull --rebase` before you push.
+3. Work only in `modules/<your team>/`. In Claude Code, `/ship` commits your folder, pulls, and pushes; `/sync` pulls everyone else's work. With other agents, say "ship" or "sync".
 
-`npm run dev` applies code changes to the running game (hot swap, or a restart that keeps the game state). `npm test` runs the headless tests. `START_PHASE=0.65 npm run dev` starts at dusk.
+`npm run dev` applies code changes to the running game (hot swap, or a restart that keeps the game state). `npm test` runs the headless tests. `npm run dev:night` starts at dusk with three-minute days. Other settings work in any shell as arguments: `node server/dev.js SEED=1234 START_PHASE=0.65`.

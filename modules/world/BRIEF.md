@@ -36,7 +36,7 @@ You decide what players find when they explore. Your world passes run on the ser
 
 ## Testing
 
-Run `npm run dev` with a fixed seed (`SEED=1234`) and open two tabs: both must show the same villages in the same places. Walk to a village and through its door.
+Run `node server/dev.js SEED=1234` (a fixed seed) and open two tabs: both must show the same villages in the same places. Walk to a village and through its door.
 
 ## Starter prompt for your agent
 

@@ -1,11 +1,11 @@
 # Instructions for coding agents
 
-You are helping one pair of people during a two-hour, ten-person game jam. Five pairs work in parallel on the same repo and commit straight to `main`. Read `DESIGN.md` for the game design, the full API, and the event list. The rules below keep five teams from breaking each other's work.
+You are helping one team of two or three people during a two-hour game jam with 10 to 13 people. Five teams work in parallel on the same repo, on Windows, macOS, and Linux, and commit straight to `main`. Read `DESIGN.md` for the game design, the full API, and the event list. The rules below keep five teams from breaking each other's work.
 
 ## Hard rules
 
 1. **Work only in your team's folder:** `modules/world/`, `modules/player/`, `modules/survival/`, `modules/creatures/`, or `modules/art/`. Ask the user which team they are on if it is not obvious. Do not edit `shared/`, `server/`, `client/`, or another team's folder; if a change there is truly needed, stop and tell the user to ask the integration lead.
-2. **Each team folder has exactly three entry files:** `shared.js` (loaded on server and client), `server.js`, and `client.js`. You may add helper files in the folder and import them from these three.
+2. **Each team folder has exactly three entry files:** `shared.js` (loaded on server and client), `server.js`, and `client.js`. You may add helper files in the folder and import them from these three. Name new files in lowercase and write import paths with the exact case and the `.js` extension: Windows and macOS forgive a wrong case, but the shared server may run Linux, which does not.
 3. **Register tiles, items, recipes, entity types, spells, world passes, and key hints only in `shared.js`,** unconditionally, at the top level. Tile ids depend on registration order.
 4. **The server decides gameplay.** Clients may only change their own player's `x`, `y`, and `dir`. Anything else (health, inventory, tiles, creatures) changes in `server.js` through `onAction` handlers and `registerSystem` systems.
 5. **World passes must be deterministic.** Use the `rng` argument and `fbm` / `valueNoise` / `hash2` from `shared/rng.js`. Never `Math.random()` or `Date.now()` in a world pass.
@@ -126,7 +126,8 @@ An entity with a numeric `light` field lights up the night automatically. On the
 ## Testing
 
 - `npm run dev`, then open `http://localhost:8080/?name=A` and `http://localhost:8080/?name=B` in two tabs. Saving `server.js` hot-swaps it into the running game; saving `client.js` reloads the browsers; saving `shared.js` restarts the server and restores the game state. Never restart anything by hand. If saved state no longer fits a changed data model, type `f` + Enter in the dev terminal for a fresh world.
-- `START_PHASE=0.65 npm run dev` starts at dusk and `DAY_LENGTH=180` shortens the day, so you can test night features right away. `SEED=1234` fixes the island.
+- `npm run dev:night` starts at dusk with three-minute days, so you can test night features right away. Other settings go after `node server/dev.js` as `NAME=value` arguments, which work in every shell: `node server/dev.js SEED=1234` fixes the island, and `START_PHASE`, `DAY_LENGTH`, and `PORT` work the same way.
+- Do not start `npm run dev` yourself: the user keeps it running in their own terminal. Tell them what to look at instead.
 - `npm test` runs headless tests of the core loop, combat, fire, the director, and live code updates. Run it before pushing anything that touches harvesting, crafting, combat, or spawning.
 - `window.game` in the browser console exposes the client state.
 - Errors inside systems, handlers, and drawers are caught and logged (at most once every five seconds per site), so check the server terminal and the browser console after each change.

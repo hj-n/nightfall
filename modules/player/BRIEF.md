@@ -37,7 +37,7 @@ You decide how it feels to be a person on this island: to move, to swing, to blo
 
 ## Testing
 
-Run `DAY_LENGTH=180 npm run dev` (or start at dusk with `START_PHASE=0.65`) and fight slimes in two tabs. Check that a parry timed on the orange wind-up stuns the slime, and that health bars appear only for entities you can see.
+Run `npm run dev:night` (dusk start, three-minute days) and fight slimes in two tabs. Check that a parry timed on the orange wind-up stuns the slime, and that health bars appear only for entities you can see.
 
 ## Starter prompt for your agent
 

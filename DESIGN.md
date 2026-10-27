@@ -1,6 +1,6 @@
 # Nightfall: Design Document
 
-*Nightfall is a working title.* CA3 Retreat 2026 · vibe-coding jam · 2 hours · up to 10 people in 5 pairs
+*Nightfall is a working title.* CA3 Retreat 2026 · vibe-coding jam · 2 hours · 10 to 13 people in 5 teams of two or three
 
 ## Pitch
 
@@ -8,7 +8,7 @@ Nightfall is a multiplayer top-down survival game on a small procedural island. 
 
 ## Design pillars
 
-1. **The night is the clock.** A full day lasts eight minutes by default, and the last quarter of it is night: two minutes of darkness after a dusk of about fifty seconds. All players face the same night at the same moment, which gives ten people a shared rhythm of preparation and panic.
+1. **The night is the clock.** A full day lasts eight minutes by default, and the last quarter of it is night: two minutes of darkness after a dusk of about fifty seconds. All players face the same night at the same moment, which gives everyone a shared rhythm of preparation and panic.
 2. **Light is the resource.** Torches let you see; fires keep you safe; wood keeps fires burning. Every night poses the same question: do we have enough wood?
 3. **The threat grows with you.** More players, better gear, and a bigger settlement bring bigger nights. Safety is never permanent.
 4. **The world is the material.** Every tile can turn into something else. Trees become wood, stone becomes tunnels, and wood becomes walls.
@@ -180,15 +180,23 @@ Actions handled today: `attack` and `guard` (player), `interact` and `craft` (su
 
 If fewer than ten people take part, staff teams in this order: World, Player, and Integration first, then Survival and Creatures. Art folds into Integration.
 
+With eleven to thirteen people, extra people form trios, in this order: **Creatures** (monsters, or director tuning and villagers), **Survival** (building, or hunger and fire), **Player** (combat, or spells).
+
+### Working as a trio
+
+- The third person owns one helper file in the team folder, for example `modules/creatures/villagers.js`, `modules/survival/hunger.js`, or `modules/player/spells.js`, imported from `server.js` or `client.js`.
+- Registrations (tiles, items, entity types, spells) stay in `shared.js`. The dev server hot-swaps helper files instead of restarting, so a tile registered in a helper would leave the server and clients out of step.
+- The whole team shares one `shared.js`. Ship small and sync often (`/ship`, `/sync`) so edits to it rarely collide.
+
 ### Signup
 
-| Team | Person A | Person B |
-|---|---|---|
-| 1 World | | |
-| 2 Player | | |
-| 3 Survival | | |
-| 4 Creatures | | |
-| 5 Integration and art | | |
+| Team | Person A | Person B | Person C |
+|---|---|---|---|
+| 1 World | | | |
+| 2 Player | | | |
+| 3 Survival | | | |
+| 4 Creatures | | | |
+| 5 Integration and art | | | |
 
 ## Rules
 
@@ -222,8 +230,9 @@ Reloading the page or losing Wi-Fi also keeps your player: the name in the URL (
 Everyone clones the repo and commits directly to `main`. Pull requests would cost too much time, and folder ownership already prevents most conflicts.
 
 - Commit small and often, roughly every 10 to 15 minutes, whenever something works.
-- Run `git pull --rebase` before every `git push`.
-- Each pair runs its own local `npm run dev` while developing: two browser tabs give you two players.
+- In Claude Code, type `/ship` to commit your team folder, pull everyone else's work, and push, and `/sync` to pull without pushing. `CLAUDE.md` spells out the steps, so other agents follow the same routine when you say "ship" or "sync".
+- By hand: `git add modules/<team>/`, `git commit`, `git pull --rebase --autostash`, `git push`.
+- Each team runs its own local `npm run dev` while developing: two browser tabs give you two players.
 - The integration lead runs the **shared server** with `npm run dev` from their own checkout. The server sends its own copy of the game files to every browser, so all players run the same version. A `git pull` on that checkout deploys itself, mostly by hot swap.
 - If `main` breaks and the fix is not obvious within five minutes, `git revert` the commit and fix it locally.
 
@@ -233,26 +242,29 @@ Everyone clones the repo and commits directly to `main`. Pull requests would cos
 npm install
 npm run dev                          # http://localhost:8080/?name=You, live code updates
 npm start                            # plain server, fresh world each start
-START_PHASE=0.65 npm run dev         # start at dusk (0 sunrise, 0.6 dusk, 0.7 night, 0.95 dawn)
-DAY_LENGTH=180 npm run dev           # three-minute days for testing night features
-SEED=1234 npm run dev                # the same island every time
-PORT=9000 npm run dev
+npm run dev:night                    # start at dusk with three-minute days
+node server/dev.js START_PHASE=0.65  # start at dusk (0 sunrise, 0.6 dusk, 0.7 night, 0.95 dawn)
+node server/dev.js DAY_LENGTH=180    # three-minute days for testing night features
+node server/dev.js SEED=1234         # the same island every time
+node server/dev.js PORT=9000
 npm test                             # headless tests: core loop, combat, fire, director, live updates
 ```
 
-The server prints its network address at startup. Eduroam often blocks connections between laptops, so test the shared server before the session. Fallbacks: a phone hotspot or travel router, or a small cloud or department VM.
+Settings go after `node server/dev.js` as `NAME=value` arguments, so the same commands work in PowerShell, cmd, and bash. Ctrl+C and `npm run dev` again also gives a fresh world: the first start never restores saved state.
+
+The server prints its network address at startup. Eduroam often blocks connections between laptops, so test the shared server before the session. Fallbacks: a phone hotspot or travel router, or a small cloud or department VM. The first time the shared server starts, Windows and macOS ask whether node may accept incoming connections: allow it on private networks. Run the shared server from a clone outside Dropbox or other synced folders, because the autosaved `.nightfall-state.json` and git's own files change constantly and cause sync conflicts and file locks.
 
 ## Day length
 
-Minecraft's twenty-minute day with a night of about seven minutes suits players who stay for hours. Tonight's constraint is different: two hours of building and one ten-minute final session. The default eight-minute day gives two minutes of night plus fifty seconds of dusk, so the director's build-up, midnight horde, and relax phases each last long enough to feel. Developers testing night features should run `DAY_LENGTH=180` (45 seconds of night) or start at dusk with `START_PHASE`. For the final session, `DAY_LENGTH=600 START_PHASE=0.4` gives about four minutes to prepare, a minute of dusk, and two and a half minutes of night with a horde in the middle.
+Minecraft's twenty-minute day with a night of about seven minutes suits players who stay for hours. Tonight's constraint is different: two hours of building and one ten-minute final session. The default eight-minute day gives two minutes of night plus fifty seconds of dusk, so the director's build-up, midnight horde, and relax phases each last long enough to feel. Developers testing night features should run `DAY_LENGTH=180` (45 seconds of night) or start at dusk with `START_PHASE`. For the final session, `node server/dev.js DAY_LENGTH=600 START_PHASE=0.4` gives about four minutes to prepare, a minute of dusk, and two and a half minutes of night with a horde in the middle.
 
 ## Schedule
 
 | Time | Activity |
 |---|---|
-| 0:00 to 0:10 | Demo the skeleton on the projector. Pairs confirm their goal for integration 1. |
+| 0:00 to 0:10 | Demo the skeleton on the projector. Teams confirm their goal for integration 1. |
 | 0:10 to 0:45 | Sprint 1: each team builds its first goal against the existing slice. |
-| 0:45 to 0:55 | Integration 1: the lead pulls; the server updates itself; everyone plays for five minutes; each pair names one bug and one hook it needs from another team. |
+| 0:45 to 0:55 | Integration 1: the lead pulls; the server updates itself; everyone plays for five minutes; each team names one bug and one hook it needs from another team. |
 | 0:55 to 1:35 | Sprint 2: cross-team features (enemies drop items, villagers request crafted goods, spells light the dark), director tuning. |
 | 1:35 to 1:50 | Feature freeze: bug fixes and polish only. |
 | 1:50 to 2:00 | Final session: everyone survives one night together on the projector. |
@@ -261,7 +273,7 @@ Minecraft's twenty-minute day with a night of about seven minutes suits players 
 
 - Start every agent session with: "Read CLAUDE.md and DESIGN.md, then work only in `modules/<your team>/`."
 - Ask for one small, testable change at a time, and test it in two tabs before asking for the next.
-- Commit each working state. Throw away failed attempts quickly with `git checkout .` rather than prompting the agent into deeper holes.
+- Ship each working state with `/ship`. Throw away failed attempts quickly with `git restore modules/<team>/` rather than prompting the agent into deeper holes.
 - If you stay stuck for more than ten minutes, swap drivers or ask the integration lead.
 
 ## Open questions

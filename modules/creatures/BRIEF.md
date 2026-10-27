@@ -37,7 +37,7 @@ You decide what lives on the island and how frightening each night becomes. The 
 
 ## Testing
 
-Run `DAY_LENGTH=180 START_PHASE=0.65 npm run dev`, press F3, and watch threat against budget through a night. Join from a second tab and check that the budget rises. Give yourself a shield to see the gear factor move.
+Run `npm run dev:night` (dusk start, three-minute days), press F3, and watch threat against budget through a night. Join from a second tab and check that the budget rises. Give yourself a shield to see the gear factor move.
 
 ## Starter prompt for your agent
 

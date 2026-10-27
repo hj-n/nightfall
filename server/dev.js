@@ -19,11 +19,20 @@
 // Type in this terminal:  h + Enter  hot swap now
 //                         r + Enter  restart, keeping state
 //                         f + Enter  restart with a FRESH world (state discarded)
+//
+// Settings work as arguments in every shell (PowerShell, cmd, bash):
+//   node server/dev.js START_PHASE=0.65 DAY_LENGTH=180 SEED=1234
 import { fork } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import readline from 'node:readline';
 import { fileURLToPath } from 'node:url';
+
+for (const arg of process.argv.slice(2)) {
+  const m = /^([A-Z_][A-Z0-9_]*)=(.*)$/.exec(arg);
+  if (m) process.env[m[1]] = m[2];
+  else console.log(`[dev] ignoring argument "${arg}" (expected NAME=value)`);
+}
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const WATCH_ROOTS = ['server', 'shared', 'client', 'modules'].map((d) => path.join(ROOT, d));
@@ -122,15 +131,15 @@ function watchAll() {
   WATCH_ROOTS.forEach(walk);
 }
 
-if (process.stdin.isTTY) {
-  readline.createInterface({ input: process.stdin }).on('line', async (line) => {
-    const cmd = line.trim().toLowerCase();
-    if (cmd === 'h') { console.log('[dev] hot swap'); tell('hot-swap'); }
-    else if (cmd === 'r') { console.log('[dev] restart, keeping state'); await restart(); }
-    else if (cmd === 'f') { console.log('[dev] restart with a fresh world'); await restart({ fresh: true }); }
-    else if (cmd) console.log('[dev] commands: h = hot swap, r = restart keeping state, f = fresh world');
-  });
-}
+// No isTTY check: Git Bash (mintty) gives node a pipe, not a TTY, and the
+// commands should still work there.
+readline.createInterface({ input: process.stdin }).on('line', async (line) => {
+  const cmd = line.trim().toLowerCase();
+  if (cmd === 'h') { console.log('[dev] hot swap'); tell('hot-swap'); }
+  else if (cmd === 'r') { console.log('[dev] restart, keeping state'); await restart(); }
+  else if (cmd === 'f') { console.log('[dev] restart with a fresh world'); await restart({ fresh: true }); }
+  else if (cmd) console.log('[dev] commands: h = hot swap, r = restart keeping state, f = fresh world');
+});
 
 watchAll();
 start();
