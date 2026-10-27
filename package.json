@@ -1,0 +1,15 @@
+{
+  "name": "nightfall",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "CA3 retreat vibe-coding jam: a multiplayer top-down survival game",
+  "scripts": {
+    "start": "node server/index.js",
+    "test": "node test/smoke.js"
+  },
+  "engines": { "node": ">=18" },
+  "dependencies": {
+    "ws": "^8.18.0"
+  }
+}

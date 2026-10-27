@@ -1,0 +1,217 @@
+// Game server: serves the client files and runs the authoritative simulation.
+// Owned by: Integration.  Run with: npm start   (PORT and SEED env vars optional)
+import http from 'node:http';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { WebSocketServer } from 'ws';
+
+import { WORLD_W, WORLD_H, TICK_HZ, PRIVATE_PREFIX } from '../shared/config.js';
+import { registries, _attachListeners } from '../shared/registry.js';
+import { World } from '../shared/world.js';
+import { createBus } from '../shared/events.js';
+import { timeOfDay } from '../shared/time.js';
+import { safely } from '../shared/safe.js';
+import { loadModules } from '../shared/loader.js';
+
+const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+const PORT = Number(process.env.PORT) || 8080;
+const SEED = Number(process.env.SEED) || Math.floor(Math.random() * 1e9);
+const PLAYER_COLORS = ['#e6194b', '#3cb44b', '#ffe119', '#4363d8', '#f58231', '#911eb4', '#46f0f0', '#f032e6', '#bcf60c', '#fabebe'];
+
+const failed = await loadModules('server', (p) => import(`../modules/${p}`));
+
+// ---------------------------------------------------------------------------
+// The server-side game object. Systems and action handlers receive it.
+// ---------------------------------------------------------------------------
+const sockets = new Map(); // playerId -> ws
+
+export const game = {
+  world: World.generate(WORLD_W, WORLD_H, SEED),
+  entities: new Map(),
+  bus: createBus(),
+  time: Number(process.env.START_TIME) || 0, // e.g. START_TIME=160 starts just before dusk
+  nextId: 1,
+
+  timeOfDay() { return timeOfDay(this.time); },
+
+  /** Create an entity of a registered type. props override the type defaults. */
+  spawn(type, props = {}) {
+    const def = registries.entityTypes.get(type);
+    if (!def) console.warn(`[spawn] unknown entity type "${type}"`);
+    const e = { id: this.nextId++, type, x: 0, y: 0, ...JSON.parse(JSON.stringify(def?.defaults || {})), ...props };
+    this.entities.set(e.id, e);
+    this.bus.emit('spawned', e);
+    return e;
+  },
+
+  despawn(id) {
+    const e = this.entities.get(id);
+    if (!e) return;
+    this.entities.delete(id);
+    this.bus.emit('despawned', e);
+  },
+
+  players() { return [...this.entities.values()].filter((e) => e.type === 'player'); },
+
+  /** All entities within radius r of (x, y), optionally filtered */
+  near(x, y, r, filter = () => true) {
+    const out = [];
+    for (const e of this.entities.values()) {
+      if (Math.hypot(e.x - x, e.y - y) <= r && filter(e)) out.push(e);
+    }
+    return out;
+  },
+
+  /** Change a tile for everyone (recorded for late joiners). */
+  setTile(x, y, idOrName) {
+    this.world.edit(x, y, idOrName);
+    const id = this.world.get(x, y);
+    if (id >= 0) broadcast({ t: 'tile', x: Math.floor(x), y: Math.floor(y), id });
+  },
+
+  /** Fire a client-side event on every client: game.bus 'net:<name>'. */
+  broadcast(name, data = {}) { broadcast({ t: 'event', name, data }); },
+
+  /** Fire a client-side event on one player's client. */
+  sendTo(playerId, name, data = {}) { send(sockets.get(playerId), { t: 'event', name, data }); },
+
+  /** Move a player (clients own their position, so we must tell them). */
+  teleport(player, x, y) {
+    player.x = x; player.y = y;
+    send(sockets.get(player.id), { t: 'teleport', x, y });
+  },
+
+  /** Inventory helpers: player.inventory is { itemName: count } */
+  give(entity, item, count = 1) {
+    entity.inventory ||= {};
+    entity.inventory[item] = (entity.inventory[item] || 0) + count;
+    if (entity.inventory[item] <= 0) delete entity.inventory[item];
+  },
+  has(entity, item, count = 1) { return (entity.inventory?.[item] || 0) >= count; },
+};
+
+_attachListeners(game);
+
+// ---------------------------------------------------------------------------
+// Networking
+// ---------------------------------------------------------------------------
+function send(ws, msg) {
+  if (ws && ws.readyState === 1) ws.send(JSON.stringify(msg));
+}
+function broadcast(msg) {
+  const s = JSON.stringify(msg);
+  for (const ws of sockets.values()) if (ws.readyState === 1) ws.send(s);
+}
+
+function publicView(e) {
+  const out = {};
+  for (const k in e) if (!k.startsWith(PRIVATE_PREFIX)) out[k] = e[k];
+  return out;
+}
+
+function onMessage(ws, msg) {
+  const player = game.entities.get(ws.playerId);
+  switch (msg.t) {
+    case 'hello': {
+      if (player) return;
+      const spawn = game.world.findWalkable();
+      const p = game.spawn('player', {
+        x: spawn.x, y: spawn.y, dir: { x: 0, y: 1 },
+        name: String(msg.name || 'player').slice(0, 16),
+        color: PLAYER_COLORS[(game.nextId - 1) % PLAYER_COLORS.length],
+        inventory: {},
+      });
+      ws.playerId = p.id;
+      sockets.set(p.id, ws);
+      send(ws, { t: 'welcome', id: p.id, seed: SEED, w: WORLD_W, h: WORLD_H, edits: game.world.editList(), time: game.time });
+      game.bus.emit('playerJoined', p);
+      console.log(`[join] ${p.name} (#${p.id}), ${sockets.size} online`);
+      break;
+    }
+    case 'move': {
+      if (!player || !Number.isFinite(msg.x) || !Number.isFinite(msg.y)) return;
+      player.x = msg.x;
+      player.y = msg.y;
+      if (msg.dir && Number.isFinite(msg.dir.x) && Number.isFinite(msg.dir.y)) player.dir = { x: msg.dir.x, y: msg.dir.y };
+      break;
+    }
+    case 'action': {
+      if (!player) return;
+      const handlers = registries.actions.get(msg.name);
+      if (!handlers) return console.warn(`[action] nobody handles "${msg.name}"`);
+      for (const h of handlers) safely(h.name, h.fn, game, player, msg.data || {});
+      break;
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Static file server (client/, shared/, modules/ only)
+// ---------------------------------------------------------------------------
+const TYPES = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.json': 'application/json',
+  '.png': 'image/png', '.svg': 'image/svg+xml', '.wav': 'audio/wav', '.mp3': 'audio/mpeg', '.ogg': 'audio/ogg' };
+const PUBLIC = ['client', 'shared', 'modules'].map((d) => path.join(ROOT, d) + path.sep);
+
+const server = http.createServer((req, res) => {
+  const urlPath = decodeURIComponent(new URL(req.url, 'http://x').pathname);
+  const file = path.resolve(ROOT, '.' + (urlPath === '/' ? '/client/index.html' : urlPath));
+  if (!PUBLIC.some((dir) => file.startsWith(dir))) { res.writeHead(404); return res.end('not found'); }
+  fs.readFile(file, (err, data) => {
+    if (err) { res.writeHead(404); return res.end('not found'); }
+    res.writeHead(200, { 'Content-Type': TYPES[path.extname(file)] || 'application/octet-stream', 'Cache-Control': 'no-store' });
+    res.end(data);
+  });
+});
+
+const wss = new WebSocketServer({ server });
+wss.on('connection', (ws) => {
+  ws.on('message', (raw) => {
+    let msg;
+    try { msg = JSON.parse(raw); } catch { return; }
+    safely(`message "${msg?.t}"`, onMessage, ws, msg);
+  });
+  ws.on('close', () => {
+    const p = game.entities.get(ws.playerId);
+    sockets.delete(ws.playerId);
+    if (p) {
+      game.bus.emit('playerLeft', p);
+      game.despawn(p.id);
+      console.log(`[leave] ${p.name}, ${sockets.size} online`);
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Main loop
+// ---------------------------------------------------------------------------
+let wasNight = game.timeOfDay().isNight;
+let last = performance.now();
+
+setInterval(() => {
+  const now = performance.now();
+  const dt = Math.min(0.25, (now - last) / 1000);
+  last = now;
+  game.time += dt;
+
+  const tod = game.timeOfDay();
+  if (tod.isNight !== wasNight) {
+    wasNight = tod.isNight;
+    const name = tod.isNight ? 'dusk' : 'dawn';
+    game.bus.emit(name, tod);
+    game.broadcast(name, { day: tod.day });
+  }
+
+  for (const s of registries.systems) safely(s.name, s.fn, game, dt);
+
+  if (sockets.size) broadcast({ t: 'snap', time: game.time, entities: [...game.entities.values()].map(publicView) });
+}, 1000 / TICK_HZ);
+
+server.listen(PORT, () => {
+  console.log(`\nNightfall server, seed ${SEED}${failed.length ? `, FAILED modules: ${failed.join(', ')}` : ''}`);
+  console.log(`  local:   http://localhost:${PORT}/?name=YourName`);
+  for (const list of Object.values(os.networkInterfaces())) {
+    for (const a of list || []) if (a.family === 'IPv4' && !a.internal) console.log(`  network: http://${a.address}:${PORT}/?name=YourName`);
+  }
+});
