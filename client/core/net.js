@@ -4,14 +4,29 @@
 import { World } from '../../shared/world.js';
 import { PRIVATE_PREFIX } from '../../shared/config.js';
 
+// When the connection drops (server restart, Wi-Fi hiccup), poll until the
+// server answers again, then reload the page: that picks up any new code, and
+// the server restores our player by name.
+function reloadWhenServerIsBack(url) {
+  const probe = new WebSocket(url);
+  let opened = false;
+  probe.addEventListener('open', () => { opened = true; probe.close(); location.reload(); });
+  probe.addEventListener('close', () => { if (!opened) setTimeout(() => reloadWhenServerIsBack(url), 1000); });
+}
+
 export function connect(game, name) {
   const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
-  const ws = new WebSocket(`${proto}//${location.host}`);
+  const url = `${proto}//${location.host}`;
+  const ws = new WebSocket(url);
   game.send = (msg) => { if (ws.readyState === 1) ws.send(JSON.stringify(msg)); };
 
   return new Promise((resolve) => {
     ws.addEventListener('open', () => game.send({ t: 'hello', name }));
-    ws.addEventListener('close', () => { game.connected = false; game.bus.emit('disconnected'); });
+    ws.addEventListener('close', () => {
+      game.connected = false;
+      game.bus.emit('disconnected');
+      setTimeout(() => reloadWhenServerIsBack(url), 500);
+    });
 
     ws.addEventListener('message', (ev) => {
       const msg = JSON.parse(ev.data);
@@ -39,6 +54,9 @@ export function connect(game, name) {
         }
         case 'event':
           game.bus.emit(`net:${msg.name}`, msg.data);
+          break;
+        case 'reload': // client code changed (dev mode)
+          location.reload();
           break;
       }
     });

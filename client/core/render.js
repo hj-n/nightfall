@@ -6,6 +6,10 @@ import { safely } from '../../shared/safe.js';
 
 const lightCanvas = document.createElement('canvas');
 const lctx = lightCanvas.getContext('2d');
+const fogCanvas = document.createElement('canvas'); // one pixel per tile, scaled up smoothly
+const fctx = fogCanvas.getContext('2d');
+const FOG_SEEN = 170;   // alpha over tiles seen before but not visible now
+const FOG_UNSEEN = 255; // alpha over tiles never seen
 
 function resetText(ctx) {
   ctx.font = '14px ui-monospace, monospace';
@@ -47,9 +51,10 @@ export function render(game, ctx, w, h) {
     }
   }
 
-  // --- entities, back to front ---
+  // --- entities, back to front (only what we can see) ---
   const list = [...game.entities.values()].sort((a, b) => a._ry - b._ry);
   for (const e of list) {
+    if (e.id !== game.myId && !game.canSee(e._rx, e._ry)) continue;
     const sx = (e._rx - cam.x) * T + w / 2;
     const sy = (e._ry - cam.y) * T + h / 2;
     if (sx < -2 * T || sy < -2 * T || sx > w + 2 * T || sy > h + 2 * T) continue;
@@ -83,6 +88,29 @@ export function render(game, ctx, w, h) {
     ctx.drawImage(lightCanvas, 0, 0);
   }
 
+  // --- fog of war ---
+  if (game.vision) {
+    const cols = x1 - x0 + 1, rows = y1 - y0 + 1;
+    if (fogCanvas.width !== cols || fogCanvas.height !== rows) { fogCanvas.width = cols; fogCanvas.height = rows; }
+    const img = fctx.createImageData(cols, rows);
+    const { seen, visible } = game.vision;
+    const W = game.world.w;
+    for (let r = 0; r < rows; r++) {
+      for (let c = 0; c < cols; c++) {
+        const tx = x0 + c, ty = y0 + r, o = (r * cols + c) * 4;
+        let a = FOG_UNSEEN;
+        if (game.world.inBounds(tx, ty)) {
+          const i = ty * W + tx;
+          a = visible[i] ? 0 : seen[i] ? FOG_SEEN : FOG_UNSEEN;
+        }
+        img.data[o] = 4; img.data[o + 1] = 5; img.data[o + 2] = 12; img.data[o + 3] = a;
+      }
+    }
+    fctx.putImageData(img, 0, 0);
+    ctx.imageSmoothingEnabled = true;
+    ctx.drawImage(fogCanvas, (x0 - cam.x) * T + w / 2, (y0 - cam.y) * T + h / 2, cols * T, rows * T);
+  }
+
   // --- HUDs ---
   for (const hud of registries.huds) {
     ctx.save();
@@ -108,19 +136,27 @@ function drawCoreHud(ctx, game, w, h) {
   ctx.fillStyle = '#ddd';
   players.forEach((p, i) => ctx.fillText(`${p.name}${p.id === game.myId ? ' (you)' : ''}`, w - 16, 32 + i * 18));
 
-  const hints = registries.keyHints.map((k) => `${k.key} ${k.label}`).join('   ');
+  // key hints, wrapped onto as many lines as the screen width needs
+  ctx.font = '13px ui-monospace, monospace';
+  const lines = [''];
+  for (const k of registries.keyHints) {
+    const part = `${k.key} ${k.label}`;
+    const next = lines[lines.length - 1] ? `${lines[lines.length - 1]}   ${part}` : part;
+    if (ctx.measureText(next).width > w - 40 && lines[lines.length - 1]) lines.push(part);
+    else lines[lines.length - 1] = next;
+  }
   ctx.textAlign = 'center';
   ctx.textBaseline = 'bottom';
   ctx.fillStyle = 'rgba(255,255,255,0.7)';
-  ctx.fillText(hints, w / 2, h - 10);
+  lines.forEach((line, i) => ctx.fillText(line, w / 2, h - 10 - (lines.length - 1 - i) * 17));
 
   if (game.failedModules.length) {
     ctx.textAlign = 'left';
     ctx.textBaseline = 'bottom';
     ctx.fillStyle = '#f55';
-    ctx.fillText(`Failed to load: ${game.failedModules.join(', ')} (see console)`, 10, h - 30);
+    ctx.fillText(`Failed to load: ${game.failedModules.join(', ')} (see console)`, 10, h - 50);
   }
-  if (!game.connected) drawStatus(ctx, w, h, 'Disconnected from server. Reload the page.');
+  if (!game.connected) drawStatus(ctx, w, h, 'Connection lost. Reconnecting...');
 }
 
 function drawStatus(ctx, w, h, text) {

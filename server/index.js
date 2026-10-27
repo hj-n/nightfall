@@ -1,5 +1,8 @@
 // Game server: serves the client files and runs the authoritative simulation.
-// Owned by: Integration.  Run with: npm start   (PORT and SEED env vars optional)
+// Owned by: Integration.
+//   npm start      plain server (env: PORT, SEED, START_TIME)
+//   npm run dev    same server under server/dev.js, which restarts it on file
+//                  changes and keeps the game state (see "Persistence" below)
 import http from 'node:http';
 import fs from 'node:fs';
 import os from 'node:os';
@@ -17,15 +20,23 @@ import { loadModules } from '../shared/loader.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const PORT = Number(process.env.PORT) || 8080;
-const SEED = Number(process.env.SEED) || Math.floor(Math.random() * 1e9);
+const STATE_FILE = process.env.STATE_FILE || path.join(ROOT, '.nightfall-state.json');
 const PLAYER_COLORS = ['#e6194b', '#3cb44b', '#ffe119', '#4363d8', '#f58231', '#911eb4', '#46f0f0', '#f032e6', '#bcf60c', '#fabebe'];
 
 const failed = await loadModules('server', (p) => import(`../modules/${p}`));
 
+// Saved state from the previous run, when restarted by the dev supervisor.
+let saved = null;
+if (process.env.RESTORE && fs.existsSync(STATE_FILE)) {
+  try { saved = JSON.parse(fs.readFileSync(STATE_FILE, 'utf8')); } catch (err) { console.error('[restore] unreadable state file', err); }
+}
+const SEED = saved?.seed ?? (Number(process.env.SEED) || Math.floor(Math.random() * 1e9));
+
 // ---------------------------------------------------------------------------
 // The server-side game object. Systems and action handlers receive it.
 // ---------------------------------------------------------------------------
-const sockets = new Map(); // playerId -> ws
+const sockets = new Map();        // playerId -> ws
+const offlinePlayers = new Map(); // name -> player entity, restored when that name rejoins
 
 export const game = {
   world: World.generate(WORLD_W, WORLD_H, SEED),
@@ -64,6 +75,23 @@ export const game = {
     return out;
   },
 
+  /** The one way to hurt anything. Listeners on the 'damage' event may change
+   *  hit.amount or set hit.cancelled (blocking, parrying, armor, ...).
+   *  Non-player entities despawn at 0 hp; players respawn (player module). */
+  damage(target, amount, source = null) {
+    if (!target || !(target.hp > 0)) return 0;
+    const hit = { target, amount, source, cancelled: false };
+    this.bus.emit('damage', hit);
+    if (hit.cancelled || hit.amount <= 0) return 0;
+    target.hp -= hit.amount;
+    this.broadcast('hit', { id: target.id, x: target.x, y: target.y, amount: hit.amount });
+    if (target.hp <= 0) {
+      this.bus.emit('killed', target, source);
+      if (target.type !== 'player') this.despawn(target.id);
+    }
+    return hit.amount;
+  },
+
   /** Change a tile for everyone (recorded for late joiners). */
   setTile(x, y, idOrName) {
     this.world.edit(x, y, idOrName);
@@ -83,7 +111,19 @@ export const game = {
     send(sockets.get(player.id), { t: 'teleport', x, y });
   },
 
-  /** Inventory helpers: player.inventory is { itemName: count } */
+  /** Push any entity; players are teleported, others just move. Respects walls. */
+  knockback(e, fromX, fromY, dist) {
+    const dx = e.x - fromX, dy = e.y - fromY, len = Math.hypot(dx, dy) || 1;
+    let x = e.x, y = e.y;
+    for (let i = 0; i < 6; i++) { // step so we never tunnel through walls
+      const nx = x + (dx / len) * (dist / 6), ny = y + (dy / len) * (dist / 6);
+      if (this.world.blocked(nx, ny)) break;
+      x = nx; y = ny;
+    }
+    if (e.type === 'player') this.teleport(e, x, y); else { e.x = x; e.y = y; }
+  },
+
+  /** Inventory helpers: entity.inventory is { itemName: count } */
   give(entity, item, count = 1) {
     entity.inventory ||= {};
     entity.inventory[item] = (entity.inventory[item] || 0) + count;
@@ -91,6 +131,34 @@ export const game = {
   },
   has(entity, item, count = 1) { return (entity.inventory?.[item] || 0) >= count; },
 };
+
+// ---------------------------------------------------------------------------
+// Persistence: the dev supervisor asks us to save before restarting, and we
+// autosave every few seconds in case we crash. Edits are stored by tile NAME,
+// so adding or reordering tiles between runs is safe.
+// ---------------------------------------------------------------------------
+function saveState() {
+  const tiles = registries.tiles;
+  const state = {
+    seed: SEED,
+    time: game.time,
+    nextId: game.nextId,
+    edits: game.world.editList().map(([x, y, id]) => [x, y, tiles[id]?.name]),
+    entities: [...game.entities.values()].filter((e) => e.type !== 'player'),
+    players: [...game.players(), ...offlinePlayers.values()],
+  };
+  fs.writeFileSync(STATE_FILE + '.tmp', JSON.stringify(state));
+  fs.renameSync(STATE_FILE + '.tmp', STATE_FILE);
+}
+
+if (saved) {
+  for (const [x, y, name] of saved.edits || []) if (registries.tileByName.has(name)) game.world.edit(x, y, name);
+  for (const e of saved.entities || []) game.entities.set(e.id, e);
+  for (const p of saved.players || []) offlinePlayers.set(p.name, p);
+  game.time = saved.time ?? game.time;
+  game.nextId = saved.nextId ?? game.nextId;
+  console.log(`[restore] ${saved.entities?.length || 0} entities, ${saved.players?.length || 0} players, ${saved.edits?.length || 0} tile edits`);
+}
 
 _attachListeners(game);
 
@@ -111,25 +179,38 @@ function publicView(e) {
   return out;
 }
 
+function join(ws, rawName) {
+  const name = String(rawName || 'player').slice(0, 16);
+  const nameOnline = game.players().some((p) => p.name === name);
+  let p;
+  if (!nameOnline && offlinePlayers.has(name)) {
+    // returning player (page reload, Wi-Fi drop, server restart): keep their stuff
+    p = { ...offlinePlayers.get(name), id: game.nextId++, guarding: false };
+    offlinePlayers.delete(name);
+    if (game.world.blocked(p.x, p.y)) Object.assign(p, game.world.findWalkable(p.x, p.y));
+    game.entities.set(p.id, p);
+  } else {
+    const spawn = game.world.findWalkable();
+    p = game.spawn('player', {
+      x: spawn.x, y: spawn.y, dir: { x: 0, y: 1 }, name,
+      color: PLAYER_COLORS[game.players().length % PLAYER_COLORS.length],
+      inventory: {},
+    });
+  }
+  ws.playerId = p.id;
+  sockets.set(p.id, ws);
+  send(ws, { t: 'welcome', id: p.id, seed: SEED, w: WORLD_W, h: WORLD_H, edits: game.world.editList(), time: game.time,
+    x: p.x, y: p.y });
+  game.bus.emit('playerJoined', p);
+  console.log(`[join] ${p.name} (#${p.id}), ${sockets.size} online`);
+}
+
 function onMessage(ws, msg) {
   const player = game.entities.get(ws.playerId);
   switch (msg.t) {
-    case 'hello': {
-      if (player) return;
-      const spawn = game.world.findWalkable();
-      const p = game.spawn('player', {
-        x: spawn.x, y: spawn.y, dir: { x: 0, y: 1 },
-        name: String(msg.name || 'player').slice(0, 16),
-        color: PLAYER_COLORS[(game.nextId - 1) % PLAYER_COLORS.length],
-        inventory: {},
-      });
-      ws.playerId = p.id;
-      sockets.set(p.id, ws);
-      send(ws, { t: 'welcome', id: p.id, seed: SEED, w: WORLD_W, h: WORLD_H, edits: game.world.editList(), time: game.time });
-      game.bus.emit('playerJoined', p);
-      console.log(`[join] ${p.name} (#${p.id}), ${sockets.size} online`);
+    case 'hello':
+      if (!player) join(ws, msg.name);
       break;
-    }
     case 'move': {
       if (!player || !Number.isFinite(msg.x) || !Number.isFinite(msg.y)) return;
       player.x = msg.x;
@@ -178,6 +259,7 @@ wss.on('connection', (ws) => {
     if (p) {
       game.bus.emit('playerLeft', p);
       game.despawn(p.id);
+      offlinePlayers.set(p.name, p);
       console.log(`[leave] ${p.name}, ${sockets.size} online`);
     }
   });
@@ -207,6 +289,16 @@ setInterval(() => {
 
   if (sockets.size) broadcast({ t: 'snap', time: game.time, entities: [...game.entities.values()].map(publicView) });
 }, 1000 / TICK_HZ);
+
+// Under the dev supervisor (server/dev.js), talk to it over IPC.
+if (process.send) {
+  process.on('message', (m) => {
+    if (m === 'save-and-exit') { safely('save', saveState); process.exit(0); }
+    if (m === 'reload-clients') broadcast({ t: 'reload' });
+  });
+  process.on('disconnect', () => process.exit(0));
+  setInterval(() => safely('autosave', saveState), 5000);
+}
 
 server.listen(PORT, () => {
   console.log(`\nNightfall server, seed ${SEED}${failed.length ? `, FAILED modules: ${failed.join(', ')}` : ''}`);

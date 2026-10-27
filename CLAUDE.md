@@ -11,15 +11,18 @@ You are helping one pair of people during a two-hour, ten-person game jam. Five 
 5. **World passes must be deterministic.** Use the `rng` argument and `fbm` / `valueNoise` / `hash2` from `shared/rng.js`. Never `Math.random()` or `Date.now()` in a world pass.
 6. **Entity defaults are plain JSON data.** No functions or class instances on entities. Fields starting with `_` are private to the side that sets them (AI state, cooldowns, animation timers).
 7. **No new npm packages, no build tools, no TypeScript, no frameworks.** Plain JavaScript ES modules and Canvas 2D.
-8. **Coordinate with other teams through events and entity fields,** never by importing their files. Prefer adding a field (`e.burning = true`) or an event (`game.bus.emit('itemDropped', ...)`) that another team can pick up.
-9. **Keep changes small** and make sure the game still starts after each one.
+8. **Hurt things only with `game.damage(target, amount, source)`.** Never subtract `hp` directly: blocking and parrying hook into the `damage` event it emits.
+9. **Coordinate with other teams through events and entity fields,** never by importing their files. Prefer adding a field (`e.burning = true`) or an event (`game.bus.emit('itemDropped', ...)`) that another team can pick up.
+10. **Keep changes small** and make sure the game still starts after each one.
 
 ## Files
 
 ```
-server/index.js        server: static files, WebSocket, game loop, server `game` object
+server/index.js        server: static files, WebSocket, game loop, server `game` object, persistence
+server/dev.js          `npm run dev`: restarts the server on code changes, keeping state
 client/main.js         client entry, client `game` object, frame loop
-client/core/           input.js, net.js (snapshots), render.js (tiles, entities, lighting, HUD)
+client/core/           input.js, net.js (snapshots, reconnect), render.js (tiles, entities,
+                       lighting, fog, HUD), vision.js (fog of war, line of sight)
 shared/registry.js     all register* functions        shared/world.js   World class
 shared/rng.js          seeded random + noise          shared/time.js    day/night clock
 shared/config.js       world size, tile size, tick rate, day length
@@ -28,6 +31,20 @@ modules/<team>/        shared.js, server.js, client.js
 ```
 
 Coordinates are in tiles (floats). Tile `(tx, ty)` covers `tx ≤ x < tx + 1`. Entity `x, y` is the entity's center. Use `game.world.blocked(x, y, r)` for collision and `game.world.tile(x, y)` to read a tile definition.
+
+Entity fields with meaning across teams:
+
+| Field | Meaning |
+|---|---|
+| `light` | Radius in tiles. Lights the night and decides what players can see after dusk (fog of war). Players carry `light: 2.5` (their torch). |
+| `repels` | With `light`, monsters stay out of 80% of the light radius. Burning campfires set it; embers do not. |
+| `hp`, `maxHp` | Makes an entity damageable through `game.damage()`. Non-players despawn at 0. |
+| `stunnedUntil` | Game time until which a creature does nothing. Set by parries. |
+| `guarding` | Player is holding guard (block with a shield, parry without). |
+| `windup` | Creature is about to attack: the visual cue players parry on. |
+| `inventory` | `{ itemName: count }`; change it only with `game.give()`. |
+
+Tile flags: `solid` blocks movement, `opaque` blocks line of sight, `harvest: { item, count, becomes }` makes a tile harvestable with E.
 
 ## Patterns
 
@@ -63,6 +80,18 @@ registerDrawer('bat', (ctx, e, sx, sy, T) => {
 });
 ```
 
+**Damage and reactions** (`server.js`):
+
+```js
+game.damage(target, 2, attacker);                // the only way to hurt things
+onEvent('damage', (game, hit) => {               // armor: halve damage for anyone wearing it
+  if (game.has(hit.target, 'armor')) hit.amount = Math.ceil(hit.amount / 2);
+});
+onEvent('killed', (game, victim, killer) => {    // loot
+  if (victim.type === 'slime') game.spawn('drop', { x: victim.x, y: victim.y, item: 'goo' });
+});
+```
+
 **A new player action** (key in `client.js`, effect in `server.js`):
 
 ```js
@@ -84,12 +113,12 @@ game.broadcast('exploded', { x, y });                       // server.js
 onEvent('net:exploded', (game, { x, y }) => { /* ... */ }); // client.js
 ```
 
-An entity with a numeric `light` field (radius in tiles) lights up the night automatically.
+An entity with a numeric `light` field lights up the night automatically. On the client, `game.canSee(x, y)` tells you whether the player can see a position right now (fog of war), and `game.targetTile()` gives the tile the player is aiming at with the mouse.
 
 ## Testing
 
-- `npm start`, then open `http://localhost:8080/?name=A` and `http://localhost:8080/?name=B` in two tabs.
-- `START_TIME=160 npm start` starts at dusk, so you can test night features right away. `SEED=1234` fixes the island.
-- `npm test` runs a headless smoke test of the core loop. Run it before pushing anything that touches harvesting, crafting, combat, or spawning.
+- `npm run dev`, then open `http://localhost:8080/?name=A` and `http://localhost:8080/?name=B` in two tabs. Every saved change restarts the server (or just reloads the browsers for client-only files) and keeps the game state, so there is no need to restart anything by hand.
+- `START_TIME=160 npm run dev` starts at dusk, so you can test night features right away. `SEED=1234` fixes the island.
+- `npm test` runs headless tests of the core loop, combat, fire, and hot restart. Run it before pushing anything that touches harvesting, crafting, combat, or spawning.
 - `window.game` in the browser console exposes the client state.
 - Errors inside systems, handlers, and drawers are caught and logged (at most once every five seconds per site), so check the server terminal and the browser console after each change.

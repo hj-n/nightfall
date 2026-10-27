@@ -5,11 +5,12 @@ import { registerTile, registerWorldPass } from '../../shared/registry.js';
 import { fbm, hash2 } from '../../shared/rng.js';
 
 // --- tiles (ids are assigned in registration order; never register conditionally) ---
+// solid: blocks movement.  opaque: blocks line of sight (fog of war).
 registerTile('water',  { color: '#2b5d9b', solid: true });
 registerTile('sand',   { color: '#d8c98a' });
 registerTile('grass',  { color: '#4e8a3a' });
-registerTile('tree',   { color: '#2f5e25', solid: true, harvest: { item: 'wood', becomes: 'grass' } });
-registerTile('stone',  { color: '#7b7b80', solid: true, harvest: { item: 'stone', becomes: 'gravel' } });
+registerTile('tree',   { color: '#2f5e25', solid: true, opaque: true, harvest: { item: 'wood', becomes: 'grass' } });
+registerTile('stone',  { color: '#7b7b80', solid: true, opaque: true, harvest: { item: 'stone', becomes: 'gravel' } });
 registerTile('gravel', { color: '#5e5a55' });
 
 // --- pass 1: island terrain from elevation and moisture noise ---

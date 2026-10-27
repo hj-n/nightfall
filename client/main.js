@@ -8,6 +8,7 @@ import { loadModules } from '../shared/loader.js';
 import { createInput } from './core/input.js';
 import { connect } from './core/net.js';
 import { render } from './core/render.js';
+import { createVision, updateVision, canSee } from './core/vision.js';
 
 const canvas = document.getElementById('game');
 const ctx = canvas.getContext('2d');
@@ -23,6 +24,7 @@ const game = {
   bus: createBus(),
   input: createInput(canvas),
   camera: { x: 0, y: 0 },
+  vision: null, // fog of war, see core/vision.js
   screen: { w: 0, h: 0 },
   send: () => {},
 
@@ -44,6 +46,18 @@ const game = {
   facingTile(e = this.me) {
     return { x: Math.floor(e.x + e.dir.x * 0.8), y: Math.floor(e.y + e.dir.y * 0.8) };
   },
+  /** Tile the player means to act on: under the mouse if within reach, else the facing tile */
+  targetTile(reach = 1.8) {
+    const me = this.me, m = this.input.mouse;
+    if (m.active) {
+      const p = this.screenToWorld(m.x, m.y);
+      const tx = Math.floor(p.x), ty = Math.floor(p.y);
+      if (Math.hypot(tx + 0.5 - me.x, ty + 0.5 - me.y) <= reach) return { x: tx, y: ty };
+    }
+    return this.facingTile(me);
+  },
+  /** Fog of war: can we see world position (x, y) right now? */
+  canSee(x, y) { return canSee(this, x, y); },
 };
 window.game = game; // handy for poking at in the browser console
 
@@ -64,6 +78,7 @@ function frame(now) {
   game.time += dt; // advance locally between snapshots
 
   if (game.world) {
+    game.vision ||= createVision(game.world);
     for (const s of registries.clientSystems) safely(s.name, s.fn, game, dt);
     // smooth other entities toward their latest server position
     const k = Math.min(1, dt * 12);
@@ -72,6 +87,7 @@ function frame(now) {
       e._rx += (e.x - e._rx) * k;
       e._ry += (e.y - e._ry) * k;
     }
+    updateVision(game);
   }
   render(game, ctx, game.screen.w, game.screen.h);
   game.input.endFrame();
@@ -79,6 +95,11 @@ function frame(now) {
 }
 requestAnimationFrame(frame);
 
-const name = new URLSearchParams(location.search).get('name') || prompt('Your name?') || `player${Math.floor(Math.random() * 100)}`;
+const params = new URLSearchParams(location.search);
+const name = params.get('name') || prompt('Your name?') || `player${Math.floor(Math.random() * 100)}`;
+if (params.get('name') !== name) { // keep the name in the URL so reloads resume the same player
+  params.set('name', name);
+  history.replaceState(null, '', `?${params}`);
+}
 await connect(game, name);
 game.bus.emit('ready');
