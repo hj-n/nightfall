@@ -6,6 +6,7 @@
 //   Shift (hold)               always guards
 import { registries, registerClientSystem, registerHud } from '../../shared/registry.js';
 import { TILE_PX } from '../../shared/config.js';
+import { updateMovementControl } from './movement-control.js';
 
 const REACH = 1.8;       // tiles: mining and swinging
 const PLACE_REACH = 2.5; // tiles: right-click use and place
@@ -36,6 +37,7 @@ function interactTarget(game) {
 }
 
 registerClientSystem('movement', (game, dt) => {
+  updateMovementControl(game);
   const me = game.me;
   if (!me) return;
   const k = game.input;

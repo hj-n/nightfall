@@ -8,7 +8,7 @@ registerEntityType('player', { hp: 10, maxHp: 10, light: 2.5, speed: 5, hotbar: 
 // Every new player starts with a sword. `damage` is how hard a held item hits (default 1).
 registerItem('sword', { color: '#cfd3da', damage: 2 });
 
-registerKeyHint('WASD', 'move (W toward cursor)');
+registerKeyHint('WASD', 'move');
 registerKeyHint('LMB/Space', 'mine / attack');
 registerKeyHint('RMB', 'place / guard');
 registerKeyHint('Shift', 'guard');
