@@ -3,6 +3,7 @@
 // which the client simulates locally and reports with 'move' messages.
 import { World } from '../../shared/world.js';
 import { PRIVATE_PREFIX } from '../../shared/config.js';
+import { clock } from '../../shared/time.js';
 
 // When the connection drops (server restart, Wi-Fi hiccup), poll until the
 // server answers again, then reload the page: that picks up any new code, and
@@ -34,6 +35,7 @@ export function connect(game, name) {
         case 'welcome':
           game.myId = msg.id;
           game.time = msg.time;
+          clock.dayLength = msg.dayLength || clock.dayLength;
           game.world = World.generate(msg.w, msg.h, msg.seed);
           game.world.applyEdits(msg.edits);
           game.connected = true;

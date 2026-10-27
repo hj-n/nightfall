@@ -1,50 +1,81 @@
 // TEAM ART & SOUND (client): every sprite is drawn in code (no image files,
 // no licensing questions) and every sound is synthesized with WebAudio.
-// Replace and extend freely; anything without a drawer falls back to a circle.
+// The camera looks straight down: characters rotate freely toward where they
+// aim, and trees and rocks are seen from above. Replace and extend freely;
+// anything without a drawer falls back to a circle.
 import { registerDrawer, registerHud, onEvent } from '../../shared/registry.js';
 import { hash2 } from '../../shared/rng.js';
 
+const now = () => performance.now();
+const flashing = (e) => (e._flashUntil || 0) > now();
+const circle = (ctx, x, y, r) => { ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill(); };
+
 // ---------------------------------------------------------------- tiles ----
+
+function speckle(ctx, px, py, T, tx, ty, color, n) {
+  ctx.fillStyle = color;
+  for (let i = 0; i < n; i++) ctx.fillRect(px + hash2(tx * 7 + i, ty * 3) * (T - 3), py + hash2(ty * 5 - i, tx * 11) * (T - 3), 3, 3);
+}
 
 registerDrawer('tile:grass', (ctx, tile, px, py, T, tx, ty) => {
   ctx.fillStyle = tile.color;
   ctx.fillRect(px, py, T, T);
-  ctx.fillStyle = 'rgba(255,255,255,0.06)';
-  for (let i = 0; i < 3; i++) {
-    const h = hash2(tx * 3 + i, ty * 7 - i);
-    ctx.fillRect(px + h * (T - 3), py + hash2(ty + i, tx) * (T - 3), 2, 4);
-  }
+  speckle(ctx, px, py, T, tx, ty, 'rgba(255,255,255,0.05)', 3);
+  speckle(ctx, px, py, T, tx + 50, ty, 'rgba(0,0,0,0.06)', 2);
+});
+
+registerDrawer('tile:sand', (ctx, tile, px, py, T, tx, ty) => {
+  ctx.fillStyle = tile.color;
+  ctx.fillRect(px, py, T, T);
+  speckle(ctx, px, py, T, tx, ty, 'rgba(120,90,40,0.15)', 4);
+});
+
+registerDrawer('tile:gravel', (ctx, tile, px, py, T, tx, ty) => {
+  ctx.fillStyle = tile.color;
+  ctx.fillRect(px, py, T, T);
+  speckle(ctx, px, py, T, tx, ty, 'rgba(255,255,255,0.10)', 5);
+  speckle(ctx, px, py, T, tx + 9, ty, 'rgba(0,0,0,0.15)', 4);
 });
 
 registerDrawer('tile:tree', (ctx, tile, px, py, T, tx, ty) => {
   ctx.fillStyle = '#4e8a3a';
   ctx.fillRect(px, py, T, T);
-  ctx.fillStyle = '#5b3a1e';
-  ctx.fillRect(px + T * 0.42, py + T * 0.55, T * 0.16, T * 0.4);
-  const v = hash2(tx, ty, 9);
-  ctx.fillStyle = v < 0.5 ? '#2f5e25' : '#356b2a';
-  ctx.beginPath();
-  ctx.arc(px + T / 2, py + T * 0.42, T * (0.36 + v * 0.1), 0, Math.PI * 2);
-  ctx.fill();
-  ctx.fillStyle = 'rgba(255,255,255,0.08)';
-  ctx.beginPath();
-  ctx.arc(px + T * 0.4, py + T * 0.32, T * 0.14, 0, Math.PI * 2);
-  ctx.fill();
+  const cx = px + T / 2, cy = py + T / 2, v = hash2(tx, ty, 9);
+  ctx.fillStyle = 'rgba(0,0,0,0.25)';                          // shadow
+  circle(ctx, cx + 3, cy + 4, T * 0.46);
+  ctx.fillStyle = v < 0.5 ? '#2a5420' : '#2f5e25';             // canopy seen from above: a few lobes
+  for (let i = 0; i < 4; i++) {
+    const a = v * 6 + i * 1.6;
+    circle(ctx, cx + Math.cos(a) * T * 0.14, cy + Math.sin(a) * T * 0.14, T * (0.26 + hash2(tx + i, ty) * 0.06));
+  }
+  ctx.fillStyle = v < 0.5 ? '#356b2a' : '#3b7430';
+  circle(ctx, cx - T * 0.06, cy - T * 0.06, T * 0.22);
+  ctx.fillStyle = 'rgba(255,255,255,0.10)';                     // sun from the top left
+  circle(ctx, cx - T * 0.12, cy - T * 0.12, T * 0.1);
 });
 
 registerDrawer('tile:stone', (ctx, tile, px, py, T, tx, ty) => {
-  ctx.fillStyle = tile.color;
+  ctx.fillStyle = '#5f5f64';
   ctx.fillRect(px, py, T, T);
-  ctx.fillStyle = 'rgba(0,0,0,0.18)';
-  ctx.fillRect(px, py + T - 4, T, 4);
+  ctx.fillStyle = tile.color;
+  ctx.fillRect(px + 2, py + 2, T - 4, T - 4);
   ctx.fillStyle = 'rgba(255,255,255,0.12)';
-  ctx.fillRect(px + hash2(tx, ty) * T * 0.6, py + 4, T * 0.3, 3);
+  ctx.fillRect(px + 2, py + 2, T - 4, 3);
+  ctx.fillRect(px + 2, py + 2, 3, T - 4);
+  ctx.strokeStyle = 'rgba(0,0,0,0.25)';                         // a crack
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  const a = hash2(tx, ty, 3);
+  ctx.moveTo(px + T * (0.2 + a * 0.5), py + T * 0.25);
+  ctx.lineTo(px + T * 0.5, py + T * (0.5 + a * 0.2));
+  ctx.lineTo(px + T * (0.7 - a * 0.3), py + T * 0.8);
+  ctx.stroke();
 });
 
 registerDrawer('tile:water', (ctx, tile, px, py, T, tx, ty) => {
   ctx.fillStyle = tile.color;
   ctx.fillRect(px, py, T, T);
-  const t = performance.now() / 900;
+  const t = now() / 900;
   ctx.fillStyle = 'rgba(255,255,255,0.10)';
   const off = Math.sin(t + tx * 0.7 + ty * 1.3) * 4;
   ctx.fillRect(px + 6 + off, py + T * 0.4, T * 0.35, 2);
@@ -52,55 +83,70 @@ registerDrawer('tile:water', (ctx, tile, px, py, T, tx, ty) => {
 
 // ------------------------------------------------------------- entities ----
 
-const now = () => performance.now();
-const flashing = (e) => (e._flashUntil || 0) > now();
-
+// Characters are drawn in local coordinates facing +x, then rotated to aim.
 registerDrawer('player', (ctx, e, x, y, T, game) => {
   const d = e.dir || { x: 0, y: 1 };
-  const side = { x: -d.y, y: d.x };            // perpendicular: right hand at +side, left at -side
+  const aim = Math.atan2(d.y, d.x);
+  const hasShield = !!e.inventory?.shield;
+
   ctx.fillStyle = 'rgba(0,0,0,0.25)';
-  ctx.beginPath(); ctx.ellipse(x, y + T * 0.3, T * 0.28, T * 0.1, 0, 0, Math.PI * 2); ctx.fill();
+  circle(ctx, x + 3, y + 4, T * 0.3);
+
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.rotate(aim);
+
+  // sword in the right hand (+y is the right side when facing +x)
+  const swing = Math.max(0, (e._swingUntil || 0) - now()) / 150;  // 1 -> 0 during a swing
+  const parrying = e.guarding && !hasShield;
+  let swordAngle = 0.6, hx = T * 0.18, hy = T * 0.27;
+  if (swing > 0) swordAngle = 1.1 - 2.2 * (1 - swing);            // sweep from right to left across the front
+  if (parrying) { swordAngle = -Math.PI / 2; hx = T * 0.34; hy = T * 0.22; } // blade held crosswise
+  if (swing > 0) {
+    ctx.strokeStyle = `rgba(255,255,255,${0.5 * swing})`;
+    ctx.lineWidth = 6;
+    ctx.beginPath(); ctx.arc(0, 0, T * 0.75, swordAngle, 1.1); ctx.stroke();
+  }
+  ctx.save();
+  ctx.translate(hx, hy);
+  ctx.rotate(swordAngle);
+  ctx.fillStyle = '#ddd';
+  ctx.fillRect(0, -2, T * 0.55, 4);                               // blade
+  ctx.fillStyle = '#8a6a2a';
+  ctx.fillRect(-2, -6, 4, 12);                                    // crossguard
+  ctx.restore();
 
   // torch in the left hand
-  const tx = x - side.x * T * 0.32 + d.x * T * 0.08, ty = y - side.y * T * 0.32 + d.y * T * 0.08;
-  ctx.fillStyle = '#5b3a1e';
-  ctx.fillRect(tx - 2, ty - T * 0.1, 4, T * 0.28);
+  ctx.strokeStyle = '#5b3a1e';
+  ctx.lineWidth = 4;
+  ctx.beginPath(); ctx.moveTo(T * 0.16, -T * 0.27); ctx.lineTo(T * 0.4, -T * 0.32); ctx.stroke();
   ctx.fillStyle = Math.sin(now() / 60 + e.id) > 0 ? '#ffb030' : '#ff8a1a';
-  ctx.beginPath(); ctx.arc(tx, ty - T * 0.14, T * 0.08, 0, Math.PI * 2); ctx.fill();
+  circle(ctx, T * 0.44, -T * 0.33, T * 0.09);
+  ctx.fillStyle = '#ffe680';
+  circle(ctx, T * 0.44, -T * 0.33, T * 0.04);
 
+  // shoulders and arms
   ctx.fillStyle = flashing(e) ? '#fff' : e.color;
-  ctx.fillRect(x - T * 0.22, y - T * 0.15, T * 0.44, T * 0.45);                    // body
+  ctx.beginPath(); ctx.ellipse(0, 0, T * 0.17, T * 0.3, 0, 0, Math.PI * 2); ctx.fill();
   ctx.fillStyle = '#f1c9a0';
-  ctx.beginPath(); ctx.arc(x, y - T * 0.28, T * 0.2, 0, Math.PI * 2); ctx.fill();   // head
-  ctx.fillStyle = '#222';
-  ctx.beginPath(); ctx.arc(x + d.x * T * 0.1, y - T * 0.28 + d.y * T * 0.08, T * 0.04, 0, Math.PI * 2); ctx.fill();
+  circle(ctx, hx, hy, T * 0.07);                                  // right hand
+  circle(ctx, T * 0.16, -T * 0.27, T * 0.07);                     // left hand
 
-  // shield: at the side normally, in front while guarding
-  if (e.inventory?.shield) {
-    const f = e.guarding ? 0.4 : 0.05, s = e.guarding ? 0.05 : 0.32;
-    const sx = x + d.x * T * f + side.x * T * s, sy = y + d.y * T * f + side.y * T * s;
+  // shield on the left forearm, swung to the front while guarding
+  if (hasShield) {
+    const sx = e.guarding ? T * 0.36 : T * 0.06, sy = e.guarding ? -T * 0.06 : -T * 0.36;
     ctx.fillStyle = '#a0703a';
     ctx.strokeStyle = '#d9b26f';
     ctx.lineWidth = 2;
-    ctx.beginPath(); ctx.arc(sx, sy, T * 0.17, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
-  } else if (e.guarding) {
-    // parry stance: a short bright line in front
-    ctx.strokeStyle = 'rgba(255,255,255,0.7)';
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    ctx.moveTo(x + d.x * T * 0.4 - side.x * T * 0.2, y + d.y * T * 0.4 - side.y * T * 0.2);
-    ctx.lineTo(x + d.x * T * 0.4 + side.x * T * 0.2, y + d.y * T * 0.4 + side.y * T * 0.2);
-    ctx.stroke();
+    ctx.beginPath(); ctx.ellipse(sx, sy, T * 0.08, T * 0.2, 0, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
   }
 
-  // sword swing arc
-  const swing = (e._swingUntil || 0) - now();
-  if (swing > 0) {
-    const a = Math.atan2(d.y, d.x);
-    ctx.strokeStyle = `rgba(255,255,255,${swing / 150})`;
-    ctx.lineWidth = 4;
-    ctx.beginPath(); ctx.arc(x, y, T * 0.8, a - 0.9, a + 0.9); ctx.stroke();
-  }
+  // head from above: face toward the front, hair on the crown
+  ctx.fillStyle = '#f1c9a0';
+  circle(ctx, T * 0.03, 0, T * 0.14);
+  ctx.fillStyle = '#4a3020';
+  circle(ctx, -T * 0.02, 0, T * 0.12);
+  ctx.restore();
 
   ctx.font = '12px ui-monospace, monospace';
   ctx.textAlign = 'center';
@@ -111,39 +157,57 @@ registerDrawer('player', (ctx, e, x, y, T, game) => {
 
 registerDrawer('slime', (ctx, e, x, y, T, game) => {
   const stunned = (e.stunnedUntil || 0) > game.time;
-  const b = stunned ? 0 : Math.abs(Math.sin(now() / 180 + e.id)) * T * 0.08;
-  const swell = e.windup ? 1.25 : 1;           // wind-up before a bite: the cue to parry
+  const pulse = stunned ? 0 : Math.sin(now() / 160 + e.id) * 0.06;
+  const swell = e.windup ? 1.25 : 1;                              // wind-up before a bite: the cue to parry
+  ctx.fillStyle = 'rgba(0,0,0,0.25)';
+  circle(ctx, x + 3, y + 4, T * 0.3 * swell);
   ctx.fillStyle = flashing(e) ? '#fff' : e.windup ? '#d94' : e.color;
-  ctx.beginPath(); ctx.ellipse(x, y + T * 0.1 - b, T * 0.32 * swell, (T * 0.24 + b * 0.5) * swell, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.ellipse(x, y, T * 0.3 * swell * (1 + pulse), T * 0.3 * swell * (1 - pulse), 0, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = 'rgba(255,255,255,0.25)';
+  circle(ctx, x - T * 0.1, y - T * 0.1, T * 0.08);
+  // eyes look at you
+  const me = game.me;
+  const a = me ? Math.atan2(me.y - e._ry, me.x - e._rx) : 0;
   ctx.fillStyle = '#111';
-  ctx.fillRect(x - T * 0.12, y - b, T * 0.06, T * 0.08);
-  ctx.fillRect(x + T * 0.06, y - b, T * 0.06, T * 0.08);
+  for (const side of [-1, 1]) {
+    circle(ctx, x + Math.cos(a) * T * 0.14 + Math.cos(a + Math.PI / 2) * side * T * 0.09,
+               y + Math.sin(a) * T * 0.14 + Math.sin(a + Math.PI / 2) * side * T * 0.09, T * 0.04);
+  }
   if (stunned) { // circling stars
     ctx.fillStyle = '#ff6';
     for (let i = 0; i < 3; i++) {
-      const a = now() / 200 + (i * Math.PI * 2) / 3;
-      ctx.fillRect(x + Math.cos(a) * T * 0.3 - 2, y - T * 0.35 + Math.sin(a) * T * 0.1 - 2, 4, 4);
+      const s = now() / 200 + (i * Math.PI * 2) / 3;
+      ctx.fillRect(x + Math.cos(s) * T * 0.3 - 2, y + Math.sin(s) * T * 0.3 - 2, 4, 4);
     }
   }
 });
 
 registerDrawer('campfire', (ctx, e, x, y, T) => {
-  ctx.fillStyle = '#5b3a1e';
-  ctx.fillRect(x - T * 0.3, y + T * 0.12, T * 0.6, T * 0.1);
-  ctx.fillRect(x - T * 0.05, y + T * 0.0, T * 0.1, T * 0.3);
+  ctx.fillStyle = '#6d6d70';                                      // ring of stones
+  for (let i = 0; i < 7; i++) {
+    const a = (i / 7) * Math.PI * 2;
+    circle(ctx, x + Math.cos(a) * T * 0.3, y + Math.sin(a) * T * 0.3, T * 0.08);
+  }
+  ctx.strokeStyle = '#5b3a1e';                                    // crossed logs
+  ctx.lineWidth = 5;
+  ctx.beginPath();
+  ctx.moveTo(x - T * 0.2, y - T * 0.12); ctx.lineTo(x + T * 0.2, y + T * 0.12);
+  ctx.moveTo(x - T * 0.2, y + T * 0.12); ctx.lineTo(x + T * 0.2, y - T * 0.12);
+  ctx.stroke();
   if (e.fuel > 0) {
     const size = 0.5 + 0.5 * Math.min(1, e.fuel / 30);
-    const f = Math.sin(now() / 70 + e.id) * T * 0.05;
-    ctx.fillStyle = '#f80';
-    ctx.beginPath(); ctx.ellipse(x, y - T * 0.02, T * 0.18 * size, (T * 0.26 + f) * size, 0, 0, Math.PI * 2); ctx.fill();
-    ctx.fillStyle = '#fd4';
-    ctx.beginPath(); ctx.ellipse(x, y + T * 0.04, T * 0.08 * size, (T * 0.14 + f * 0.5) * size, 0, 0, Math.PI * 2); ctx.fill();
-  } else { // embers
+    const f = 1 + Math.sin(now() / 70 + e.id) * 0.12;
+    ctx.fillStyle = '#f60';
+    circle(ctx, x, y, T * 0.2 * size * f);
+    ctx.fillStyle = '#fa3';
+    circle(ctx, x, y, T * 0.13 * size * f);
+    ctx.fillStyle = '#ffe680';
+    circle(ctx, x, y, T * 0.06 * size);
+  } else {                                                        // embers
     ctx.fillStyle = Math.sin(now() / 400 + e.id) > 0 ? '#a33' : '#822';
-    ctx.fillRect(x - T * 0.15, y + T * 0.08, T * 0.3, T * 0.06);
+    circle(ctx, x, y, T * 0.08);
   }
-  // fuel bar
-  const frac = Math.max(0, Math.min(1, e.fuel / e.maxFuel));
+  const frac = Math.max(0, Math.min(1, e.fuel / e.maxFuel));      // fuel bar
   ctx.fillStyle = 'rgba(0,0,0,0.6)';
   ctx.fillRect(x - T * 0.4, y - T * 0.6, T * 0.8, 5);
   ctx.fillStyle = frac > 0.33 ? '#fa3' : '#e33';
@@ -221,3 +285,4 @@ onEvent('net:crafted', () => blip(500, 0.25, 'triangle', 0.07, 900));
 onEvent('net:dusk', () => blip(110, 1.5, 'sine', 0.12, 55));
 onEvent('net:dawn', () => blip(330, 1.0, 'sine', 0.08, 660));
 onEvent('net:died', () => blip(200, 0.8, 'sawtooth', 0.08, 40));
+onEvent('net:horde', () => { blip(98, 1.2, 'sawtooth', 0.09, 92); setTimeout(() => blip(73, 1.6, 'sawtooth', 0.09, 70), 900); }); // war horn

@@ -1,9 +1,10 @@
 // Game server: serves the client files and runs the authoritative simulation.
 // Owned by: Integration.
-//   npm start      plain server (env: PORT, SEED, START_TIME)
-//   npm run dev    same server under server/dev.js, which restarts it on file
-//                  changes and keeps the game state (see "Persistence" below)
+//   npm start      plain server (env: PORT, SEED, DAY_LENGTH, START_PHASE)
+//   npm run dev    same server under server/dev.js, which hot-swaps team server
+//                  code in place and restarts (keeping state) for everything else
 import http from 'node:http';
+import * as nodeModule from 'node:module';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -11,10 +12,11 @@ import { fileURLToPath } from 'node:url';
 import { WebSocketServer } from 'ws';
 
 import { WORLD_W, WORLD_H, TICK_HZ, PRIVATE_PREFIX } from '../shared/config.js';
-import { registries, _attachListeners } from '../shared/registry.js';
+import { registries, _attachListeners, _setCurrentModule } from '../shared/registry.js';
+import { MODULES } from '../modules/manifest.js';
 import { World } from '../shared/world.js';
 import { createBus } from '../shared/events.js';
-import { timeOfDay } from '../shared/time.js';
+import { timeOfDay, clock } from '../shared/time.js';
 import { safely } from '../shared/safe.js';
 import { loadModules } from '../shared/loader.js';
 
@@ -22,6 +24,9 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const PORT = Number(process.env.PORT) || 8080;
 const STATE_FILE = process.env.STATE_FILE || path.join(ROOT, '.nightfall-state.json');
 const PLAYER_COLORS = ['#e6194b', '#3cb44b', '#ffe119', '#4363d8', '#f58231', '#911eb4', '#46f0f0', '#f032e6', '#bcf60c', '#fabebe'];
+
+clock.dayLength = Number(process.env.DAY_LENGTH) || clock.dayLength;
+nodeModule.register?.('./hot-hooks.js', import.meta.url); // lets hotSwap() reload helper files too
 
 const failed = await loadModules('server', (p) => import(`../modules/${p}`));
 
@@ -42,7 +47,8 @@ export const game = {
   world: World.generate(WORLD_W, WORLD_H, SEED),
   entities: new Map(),
   bus: createBus(),
-  time: Number(process.env.START_TIME) || 0, // e.g. START_TIME=160 starts at dusk
+  // START_PHASE is a fraction of the day: 0 sunrise, 0.6 dusk, 0.7 night, 0.95 dawn
+  time: Number(process.env.START_TIME) || (Number(process.env.START_PHASE) || 0) * clock.dayLength,
   nextId: 1,
 
   timeOfDay() { return timeOfDay(this.time); },
@@ -151,16 +157,64 @@ function saveState() {
   fs.renameSync(STATE_FILE + '.tmp', STATE_FILE);
 }
 
+// New fields added to an entity type since the state was saved get their
+// default values; existing values are left alone. This covers the most common
+// data-model change without a fresh start.
+function backfillDefaults(e) {
+  const defaults = registries.entityTypes.get(e.type)?.defaults || {};
+  for (const k in defaults) if (!(k in e)) e[k] = JSON.parse(JSON.stringify(defaults[k]));
+  return e;
+}
+
 if (saved) {
   for (const [x, y, name] of saved.edits || []) if (registries.tileByName.has(name)) game.world.edit(x, y, name);
-  for (const e of saved.entities || []) game.entities.set(e.id, e);
-  for (const p of saved.players || []) offlinePlayers.set(p.name, p);
+  for (const e of saved.entities || []) game.entities.set(e.id, backfillDefaults(e));
+  for (const p of saved.players || []) offlinePlayers.set(p.name, backfillDefaults(p));
   game.time = saved.time ?? game.time;
   game.nextId = saved.nextId ?? game.nextId;
   console.log(`[restore] ${saved.entities?.length || 0} entities, ${saved.players?.length || 0} players, ${saved.edits?.length || 0} tile edits`);
 }
 
 _attachListeners(game);
+
+// ---------------------------------------------------------------------------
+// Hot swap: reload every modules/<team>/server.js (and the helpers it imports)
+// in place. Entities, tiles, players and connections stay untouched; only the
+// systems, action handlers and event listeners are replaced. State kept in
+// module-level variables is lost, so keep anything that matters on entities or
+// on `game`. shared.js changes need a restart (dev.js handles that).
+// ---------------------------------------------------------------------------
+let hotVersion = 0;
+async function hotSwap() {
+  hotVersion++;
+  const old = { systems: [...registries.systems], actions: new Map(registries.actions), listeners: [...registries.listeners] };
+  registries.systems.length = 0;
+  registries.actions.clear();
+  registries.listeners.length = 0;
+  const failedNow = [];
+  for (const name of MODULES) {
+    _setCurrentModule(name);
+    try {
+      await import(`../modules/${name}/server.js?hot=${hotVersion}`);
+    } catch (err) {
+      failedNow.push(name);
+      console.error(`[hot] modules/${name}/server.js failed to load; keeping its previous version:`, err);
+      // fall back to the old registrations of that module so the game keeps working
+      registries.systems.push(...old.systems.filter((s) => s.name.startsWith(`${name}/`)));
+      registries.listeners.push(...old.listeners.filter((l) => l.name.startsWith(`${name}/`)));
+      for (const [action, hs] of old.actions) {
+        const mine = hs.filter((h) => h.name.startsWith(`${name}/`));
+        if (mine.length) registries.actions.set(action, [...(registries.actions.get(action) || []), ...mine]);
+      }
+    }
+  }
+  _setCurrentModule('core');
+  game.bus = createBus();
+  _attachListeners(game);
+  game.bus.emit('hotSwapped');
+  game.broadcast('hotswap', { failed: failedNow });
+  console.log(`[hot] swapped server code (v${hotVersion})${failedNow.length ? `, kept old: ${failedNow.join(', ')}` : ''}`);
+}
 
 // ---------------------------------------------------------------------------
 // Networking
@@ -185,7 +239,7 @@ function join(ws, rawName) {
   let p;
   if (!nameOnline && offlinePlayers.has(name)) {
     // returning player (page reload, Wi-Fi drop, server restart): keep their stuff
-    p = { ...offlinePlayers.get(name), id: game.nextId++, guarding: false };
+    p = backfillDefaults({ ...offlinePlayers.get(name), id: game.nextId++, guarding: false });
     offlinePlayers.delete(name);
     if (game.world.blocked(p.x, p.y)) Object.assign(p, game.world.findWalkable(p.x, p.y));
     game.entities.set(p.id, p);
@@ -200,7 +254,7 @@ function join(ws, rawName) {
   ws.playerId = p.id;
   sockets.set(p.id, ws);
   send(ws, { t: 'welcome', id: p.id, seed: SEED, w: WORLD_W, h: WORLD_H, edits: game.world.editList(), time: game.time,
-    x: p.x, y: p.y });
+    dayLength: clock.dayLength });
   game.bus.emit('playerJoined', p);
   console.log(`[join] ${p.name} (#${p.id}), ${sockets.size} online`);
 }
@@ -295,6 +349,7 @@ if (process.send) {
   process.on('message', (m) => {
     if (m === 'save-and-exit') { safely('save', saveState); process.exit(0); }
     if (m === 'reload-clients') broadcast({ t: 'reload' });
+    if (m === 'hot-swap') hotSwap().catch((err) => console.error('[hot] swap failed', err));
   });
   process.on('disconnect', () => process.exit(0));
   setInterval(() => safely('autosave', saveState), 5000);

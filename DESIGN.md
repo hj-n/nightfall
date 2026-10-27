@@ -1,17 +1,18 @@
 # Nightfall: Design Document
 
-CA3 Retreat 2026 · vibe-coding jam · 2 hours · up to 10 people in 5 pairs
+*Nightfall is a working title.* CA3 Retreat 2026 · vibe-coding jam · 2 hours · up to 10 people in 5 pairs
 
 ## Pitch
 
-Nightfall is a multiplayer top-down survival game on a small procedural island. By day, players explore, cut trees, mine stone, and build. At night, the island goes dark and slimes crawl out of the shadows. Everyone carries a torch, but a torch only lets you see the monsters coming; the only safe ground lies within the light of a burning campfire, and campfires eat wood. The game borrows ideas from Minicraft (a top-down tile world you can mine and rebuild), Don't Starve (darkness as the enemy, fires you must keep fed), and classic top-down action adventures (melee, shields, villages, dungeons). Everything we make stays original: no borrowed names, sprites, or music.
+Nightfall is a multiplayer top-down survival game on a small procedural island. By day, players explore, cut trees, mine stone, and build. At night, the island goes dark and slimes crawl out of the shadows. Everyone carries a torch, but a torch only lets you see the monsters coming; the only safe ground lies within the light of a burning campfire, and campfires eat wood. A game director watches how strong the group has become and sends trouble to match. The game borrows ideas from Minicraft (a top-down tile world you can mine and rebuild), Don't Starve (darkness as the enemy, fires you must keep fed), Left 4 Dead and Darktide (a director that paces the threat), and classic top-down action adventures (melee, shields, villages, dungeons). Everything we make stays original: no borrowed names, sprites, or music.
 
 ## Design pillars
 
-1. **The night is the clock.** A full day lasts four minutes, and the last quarter of it is night. All players face the same night at the same moment, which gives ten people a shared rhythm of preparation and panic.
+1. **The night is the clock.** A full day lasts eight minutes by default, and the last quarter of it is night: two minutes of darkness after a dusk of about fifty seconds. All players face the same night at the same moment, which gives ten people a shared rhythm of preparation and panic.
 2. **Light is the resource.** Torches let you see; fires keep you safe; wood keeps fires burning. Every night poses the same question: do we have enough wood?
-3. **The world is the material.** Every tile can turn into something else. Trees become wood, stone becomes tunnels, and wood becomes walls.
-4. **Small and playable beats big and broken.** Every feature should be playable within 20 minutes of starting work on it.
+3. **The threat grows with you.** More players, better gear, and a bigger settlement bring bigger nights. Safety is never permanent.
+4. **The world is the material.** Every tile can turn into something else. Trees become wood, stone becomes tunnels, and wood becomes walls.
+5. **Small and playable beats big and broken.** Every feature should be playable within 20 minutes of starting work on it.
 
 The core loop: explore, harvest, craft and build, survive the night around the fire, watch the slimes melt at dawn, and start again with better tools.
 
@@ -20,12 +21,13 @@ The core loop: explore, harvest, craft and build, survive the night around the f
 | Input | Action |
 |---|---|
 | WASD or arrows | Move |
-| Mouse | Aim (the player faces the cursor) |
+| Mouse | Aim: the character turns freely toward the cursor |
 | Left mouse or Space | Swing |
 | Right mouse or Shift (hold) | Guard: block with a shield, otherwise parry |
 | E | Harvest the targeted tile, or feed wood to a campfire |
 | C | Build a campfire (5 wood) |
 | V | Craft a shield (3 wood, 2 stone) |
+| F3 | Director debug panel |
 
 The targeted tile is the one under the cursor when it is within reach, otherwise the tile in front of the player; a white outline marks it. Space and Shift mirror the mouse buttons for people on trackpads.
 
@@ -34,21 +36,23 @@ The targeted tile is the one under the cursor when it is within reach, otherwise
 The repo runs out of the box and contains one thin vertical slice through every team's area:
 
 - **World.** A seeded island with water, sand, grass, forests, and stone, generated identically on server and clients.
-- **Fog of war.** Each player sees up to 13 tiles, and trees and stone block line of sight. Tiles you have seen before stay on screen, dimmed; tiles you have never seen stay black. After dusk you see only what some light source illuminates: your own torch, other players' torches, and campfires. Creatures outside your view are hidden.
+- **True top-down view.** The camera looks straight down. Characters rotate freely toward the cursor, with a torch in the left hand and a sword in the right; trees, rocks, slimes, and fires are all drawn from above.
+- **Fog of war, per player.** Each player computes their own line of sight every frame: up to 13 tiles, blocked by trees and stone. You only see the monsters your own character can see. Tiles you have seen before stay on screen, dimmed; tiles you have never seen stay black. After dusk you see only what some light source illuminates: your torch, other players' torches, and campfires.
 - **Torch.** Every player carries a torch with a light radius of 2.5 tiles. It reveals monsters but does not keep them away.
 - **Campfires.** A campfire starts with 45 seconds of fuel (maximum 90) and shows a fuel bar. Each wood fed with E adds 20 seconds. Its light shrinks during the last 30 seconds; at zero it turns to embers that no longer protect anyone.
 - **Monsters and fire.** Slimes never step into the light of a burning campfire. They gather at its edge, and a slime caught inside when a new fire starts flees. A fire that burns out lets them in.
-- **Combat.** Swing with the left mouse button (three hits kill a slime, with a little knockback). Slimes telegraph each bite: they swell and turn orange for 0.4 seconds. Holding guard with a shield blocks every hit from the front. Without a shield, guard parries: pressing it in the 0.25 seconds before a hit cancels the hit, knocks the attacker back, and stuns it for 1.2 seconds. Hits from the side or behind always land.
+- **Combat.** Swing with the left mouse button; three hits kill a slime, with a little knockback. Slimes telegraph each bite: they swell and turn orange for 0.4 seconds. Holding guard with a shield blocks every hit from the front. Without a shield, guard parries: pressing it in the 0.25 seconds before a hit cancels the hit, knocks the attacker back, and stuns it for 1.2 seconds. Hits from the side or behind always land.
+- **Game director.** A director paces each night through build-up, peak, and relax phases and sends a horde around midnight (two hordes from the third night on). The size of the threat scales with the number of players, their gear, the settlement, and the night number. See the section below.
 - **Death.** Dead players respawn at the island center with full health and keep their inventory.
-- **Presentation.** Code-drawn sprites (torch, shield, swing arc, stun stars, flames, embers), sparks on parries and blocks, synthesized sound effects, and a HUD.
-- **Hot restart.** `npm run dev` restarts the server on every code change in about a second and keeps the world, the creatures, and every player's position and inventory. Browsers reconnect and reload on their own.
+- **Presentation.** Code-drawn sprites, sparks on parries and blocks, on-screen notices (nightfall, dawn, hordes, code updates), synthesized sound effects, and a HUD.
+- **Live code updates.** `npm run dev` swaps new server code into the running game without disconnecting anyone, and restarts (keeping all state) only when the data model changes. See "Development workflow".
 
 ## Tech stack
 
 | Layer | Choice | Why |
 |---|---|---|
 | Client | Plain JavaScript ES modules, Canvas 2D | No build step and no framework conventions to fight. LLM agents write Canvas code reliably. |
-| Server | Node.js 18+ with one dependency (`ws`) | The same process serves the game files and the WebSocket. |
+| Server | Node.js 20+ with one dependency (`ws`) | The same process serves the game files and the WebSocket. |
 | Shared code | `shared/` and `modules/*/shared.js` | The same files run in Node and in the browser. |
 | Art | Drawn in code | No asset pipeline, no licensing questions. |
 | Sound | WebAudio synthesis (`blip()` in `modules/art/client.js`) | No audio files needed. |
@@ -61,13 +65,14 @@ The repo runs out of the box and contains one thin vertical slice through every 
      │  world: seed + tile edits     clock: day/night   │
      │  entities: players, slimes, campfires, ...       │
      │  systems (every tick)   action handlers          │
+     │  game director (game.director)                   │
      └──────────────────────────────────────────────────┘
           ▲  hello, move, action        │  welcome, snap, tile,
           │                             ▼  event, teleport, reload
      ┌──────────────────────────────────────────────────┐
      │  CLIENT (browser) × 10                           │
      │  generates world from seed · moves own player    │
-     │  fog of war · client systems · drawers · HUDs    │
+     │  own line of sight and fog · drawers · HUDs      │
      └──────────────────────────────────────────────────┘
 ```
 
@@ -78,9 +83,35 @@ Six ideas hold the design together:
 - **Deterministic world.** Server and clients run the same world passes with the same seed, so the network carries only tile edits, never the map. World passes must use the `rng` they receive and the noise helpers in `shared/rng.js`; a single `Math.random()` call desynchronizes everyone.
 - **Registries.** Teams add content by calling `registerTile`, `registerItem`, `registerSystem`, and so on from their own folder. Nobody edits a central list, so merge conflicts nearly vanish.
 - **Entities as plain objects (ECS-lite).** An entity is `{ id, type, x, y, ...components }`, for example `{ id: 7, type: 'slime', x: 81.5, y: 90.2, hp: 3, speed: 1.6 }`. Systems are functions that run every tick over the entities they care about. Fields that start with `_` stay private to the side that set them and never travel over the network.
-- **Shared fields as interfaces.** A few entity fields carry meaning across teams. `light` (radius in tiles) lights the night and defines what players can see. `repels: true` keeps monsters out of 80% of that radius. `stunnedUntil` freezes a creature. `hp` makes an entity damageable.
+- **Shared fields as interfaces.** A few fields carry meaning across teams. On entities: `light` (radius in tiles) lights the night and defines what players can see; `repels: true` keeps monsters out of 80% of that radius; `hostile` and `threat` tell the director what counts as a monster and how much; `stunnedUntil` freezes a creature; `hp` makes an entity damageable. On items, `gear` (or `equip`) counts toward the group's gear score; on tiles, `structure: true` counts toward the settlement.
 - **One damage pipeline.** All damage goes through `game.damage(target, amount, source)`, which first emits a `damage` event. Listeners can lower `hit.amount` or set `hit.cancelled`, which is how blocking and parrying work, and how armor, buffs, or friendly-fire rules would work.
 - **Error isolation.** Every system, handler, drawer, and HUD runs inside a `try/catch`. A bug in one team's code logs an error at most every five seconds; the game keeps running.
+
+## The game director
+
+The director lives in `modules/creatures/director.js` and runs only at night. It keeps a **threat budget**: the total `threat` of live hostile creatures it allows at once (a slime costs 1).
+
+```
+budget = 2
+       × players ^ 0.8                more people, more monsters, but sublinear
+       × (1 + 0.35 × average gear)    item.gear, or 1 per item with `equip` (a shield)
+       × (1 + 0.08 × settlement)      burning campfires + structure tiles / 10
+       × (1 + 0.25 × (night − 1))     each night is harder than the last
+       × ramp                         0.6 at nightfall, 1.3 at midnight, 0.6 at dawn
+       capped at 40
+```
+
+At midnight of the first night, three unequipped players around one fire face a budget of about 7. Ten players, half of them with shields, around three fires and twenty wall tiles face about 27. By the fourth night a fully shielded, walled-in group of ten hits the cap of 40.
+
+Each player also has an **intensity** between 0 and 1. It rises with damage taken and with monsters within three tiles, and decays by 0.08 per second. The group's intensity is the highest individual value. The director moves through three moods:
+
+| Mood | Behavior | Leaves when |
+|---|---|---|
+| Build-up | Spawns a monster every 0.7 s near a random player while the live threat is under budget | group intensity reaches 0.7, or a horde arrives |
+| Peak | Keeps topping up to the budget | after 15 s |
+| Relax | Spawns nothing; players can regroup and feed fires | after 20 s, once intensity falls below 0.3 |
+
+At midnight (at 35% and 75% of the night from the third night on), a **horde** of 80% of the budget spawns from one compass direction, aimed at the calmest player, and hunts from 25 tiles away. Every client gets a warning and a war horn. All numbers live in `TUNING` at the top of `director.js`, and F3 shows the live state, so the Creatures team can tune the curve while everyone plays.
 
 ## The contract
 
@@ -88,10 +119,10 @@ Six ideas hold the design together:
 
 | Function | Call from | Purpose |
 |---|---|---|
-| `registerTile(name, { color, solid, opaque, harvest })` | `shared.js` | New tile type. `solid` blocks movement, `opaque` blocks sight, `harvest: { item, count, becomes }` makes it harvestable with E. |
-| `registerItem(name, def)` | `shared.js` | New item type. |
+| `registerTile(name, { color, solid, opaque, structure, harvest })` | `shared.js` | New tile type. `solid` blocks movement, `opaque` blocks sight, `structure` counts toward the settlement, `harvest: { item, count, becomes }` makes it harvestable with E. |
+| `registerItem(name, { gear, equip, ... })` | `shared.js` | New item type. `gear` (or `equip`) adds to the gear score. |
 | `registerRecipe(name, { inputs, output, places })` | `shared.js` | Crafting recipe. `places` spawns an entity in front of the player. |
-| `registerEntityType(type, defaults)` | `shared.js` | New entity type. Defaults must be plain data. |
+| `registerEntityType(type, defaults)` | `shared.js` | New entity type. Defaults must be plain data. Monsters need `hostile: true`, `hp`, and optionally `threat`. |
 | `registerSpell(name, def)` | `shared.js` | New spell definition. |
 | `registerWorldPass(name, fn(world, rng), { order })` | `shared.js` | World generation step. Terrain runs at order 0. |
 | `registerKeyHint(key, label)` | `shared.js` | Adds a hint to the help line. |
@@ -104,11 +135,11 @@ Six ideas hold the design together:
 
 ### The `game` object
 
-On the **server**, systems and handlers receive `game` with `world`, `entities`, `time`, `bus`, and these helpers: `spawn(type, props)`, `despawn(id)`, `players()`, `near(x, y, r, filter)`, `damage(target, amount, source)`, `knockback(entity, fromX, fromY, dist)`, `setTile(x, y, name)`, `broadcast(name, data)`, `sendTo(playerId, name, data)`, `teleport(player, x, y)`, `give(entity, item, n)`, `has(entity, item, n)`, and `timeOfDay()`.
+On the **server**, systems and handlers receive `game` with `world`, `entities`, `time`, `bus`, `director`, and these helpers: `spawn(type, props)`, `despawn(id)`, `players()`, `near(x, y, r, filter)`, `damage(target, amount, source)`, `knockback(entity, fromX, fromY, dist)`, `setTile(x, y, name)`, `broadcast(name, data)`, `sendTo(playerId, name, data)`, `teleport(player, x, y)`, `give(entity, item, n)`, `has(entity, item, n)`, and `timeOfDay()`.
 
-On the **client**, `game` has `world`, `entities`, `me`, `myId`, `input`, `camera`, `vision`, and the helpers `sendAction(name, data)`, `targetTile()`, `facingTile()`, `canSee(x, y)`, `screenToWorld(sx, sy)`, `worldToScreen(x, y)`, and `timeOfDay()`. Input uses key codes: `game.input.down('KeyW')` while held, `game.input.pressed('KeyE')` once per press, `game.input.clicked(0)` once per left click, and `game.input.mouseDown(2)` while the right button is held.
+On the **client**, `game` has `world`, `entities`, `me`, `myId`, `input`, `camera`, `vision`, and the helpers `sendAction(name, data)`, `notify(text, seconds, color)`, `targetTile()`, `facingTile()`, `canSee(x, y)`, `screenToWorld(sx, sy)`, `worldToScreen(x, y)`, and `timeOfDay()`. Input uses key codes: `game.input.down('KeyW')` while held, `game.input.pressed('KeyE')` once per press, `game.input.clicked(0)` once per left click, and `game.input.mouseDown(2)` while the right button is held.
 
-`timeOfDay()` returns `{ phase, darkness, isNight, day, clock }`.
+`timeOfDay()` returns `{ phase, darkness, isNight, nightProgress, nightLength, day, clock }`.
 
 ### Events
 
@@ -119,14 +150,18 @@ On the **client**, `game` has `world`, `entities`, `me`, `myId`, `input`, `camer
 | `dusk`, `dawn` | server | timeOfDay | core |
 | `damage` | server | hit `{ target, amount, source, cancelled }` | core, before damage applies |
 | `killed` | server | victim, killer | core |
+| `hotSwapped` | server | none | core, after new server code loads |
 | `net:dusk`, `net:dawn` | client | `{ day }` | core |
 | `net:hit` | client | `{ id, x, y, amount }` | core |
+| `net:hotswap` | client | `{ failed }` | core |
 | `net:swing` | client | `{ id }` | player |
 | `net:parry`, `net:block` | client | `{ id, x, y }` (parry also `target`) | player |
 | `net:died` | client | `{}` (to the victim only) | player |
 | `net:harvested` | client | `{ x, y, item, by }` | survival |
 | `net:crafted` | client | `{ recipe, by }` | survival |
 | `net:fed`, `net:fireOut` | client | `{ id, ... }` | survival |
+| `net:horde` | client | `{ from, count, target }` | creatures (director) |
+| `net:director` | client | director state, once per second | creatures (director) |
 | `ready`, `disconnected` | client | none | core |
 | `tileChanged` | client | x, y, id | core |
 | `entityAppeared`, `entityGone` | client | entity | core |
@@ -137,10 +172,10 @@ Actions handled today: `attack` and `guard` (player), `interact` and `craft` (su
 
 | # | Team | Folder | Owns | Goal by integration 1 (0:45) | Goal by freeze (1:35) | Stretch |
 |---|---|---|---|---|---|---|
-| 1 | World | `modules/world` | Terrain, biomes, villages, dungeons, resources | Villages: small houses built from wall tiles, with paths between them | Caves or dungeons with ore tiles worth mining | New biomes (snow, desert), trees that regrow, flowers or berries to forage |
-| 2 | Player | `modules/player` | Movement, combat, magic, health, death | Weapon feel: a health bar over damaged entities, invulnerability frames, a dodge roll | Two or three spells with mana, such as a firebolt projectile that carries `light` | Weapon types, experience and levels |
-| 3 | Survival | `modules/survival` | Items, equipment, crafting, building, hunger, fire | Placeable walls and doors; slimes cannot pass walls | Hunger and food; craftable torches that burn out; a stone fire pit that burns longer | Crafting menu, tools that harvest faster, chests, farming |
-| 4 | Creatures | `modules/creatures` | Monsters, animals, NPCs, quests | A second monster that ignores fire, or one that snuffs out campfires | Villagers who hand out procedural quests ("bring 5 wood") | A blood-moon raid every third night; a dungeon boss |
+| 1 | World | `modules/world` | Terrain, biomes, villages, dungeons, resources | Villages: small houses built from wall tiles (`structure: true`), with paths between them | Caves or dungeons with ore tiles worth mining | New biomes (snow, desert), trees that regrow, berries to forage |
+| 2 | Player | `modules/player` | Movement, combat, magic, health, death | Weapon feel: a health bar over damaged entities, invulnerability frames, a dodge roll | Two or three spells with mana, such as a firebolt projectile that carries `light` | Weapon types (items with `gear`), experience and levels |
+| 3 | Survival | `modules/survival` | Items, equipment, crafting, building, hunger, fire | Placeable walls and doors (`structure: true`); slimes cannot pass walls | Hunger and food; craftable torches that burn out; a stone fire pit that burns longer | Crafting menu, tools that harvest faster, chests, farming |
+| 4 | Creatures | `modules/creatures` | Monsters, animals, NPCs, quests, the director | A second monster with its own `threat` cost, for example one that ignores fire or snuffs out campfires | Tune the director with F3 while others play; villagers with procedural quests ("bring 5 wood") | A blood-moon raid every third night; a dungeon boss |
 | 5 | Integration and art | core files and `modules/art` | Server, netcode, merging, sprites, sound | Clean merge with everyone on the shared server | A sprite and sound for every new tile and entity | A music loop, particles, screen shake, a minimap of explored tiles |
 
 If fewer than ten people take part, staff teams in this order: World, Player, and Integration first, then Survival and Creatures. Art folds into Integration.
@@ -158,21 +193,27 @@ If fewer than ten people take part, staff teams in this order: World, Player, an
 ## Rules
 
 1. **Edit only your own folder.** If you need a change in `shared/`, `server/`, or `client/`, ask the integration lead.
-2. **Register content in `shared.js`.** Tiles, items, recipes, entity types, spells, and world passes go there, because both server and clients must load them in the same order.
+2. **Register content in `shared.js`.** Tiles, items, recipes, entity types, spells, world passes, and key hints go there, because both server and clients must load them in the same order.
 3. **Decide gameplay on the server.** Clients send actions; they never change health, inventories, or tiles themselves.
 4. **Hurt things only with `game.damage()`,** so blocking, parrying, and future armor keep working.
-5. **Never call `Math.random()` in a world pass.** Use the `rng` argument.
-6. **Keep entity defaults to plain data,** and prefix private fields with `_`.
-7. **Add no npm packages and no build step.**
-8. **Talk to other teams through events and entity fields,** not imports.
+5. **Keep state on entities or on `game`, not in module-level variables.** Hot swaps reload module code and reset its variables; entities and `game.director`-style objects survive.
+6. **Never call `Math.random()` in a world pass.** Use the `rng` argument.
+7. **Keep entity defaults to plain data,** and prefix private fields with `_`. No `setInterval` or `setTimeout` in server code: use `registerSystem`, so hot swaps do not leave old timers running.
+8. **Add no npm packages and no build step.**
+9. **Talk to other teams through events and entity fields,** not imports.
 
 ## Development workflow
 
-Use `npm run dev` for all development, both locally and on the shared server. It watches the code and acts on every saved change:
+Use `npm run dev` for all development, both locally and on the shared server. It reacts to every saved change with the lightest update that is safe:
 
-- A change to client-only code (`client/`, any `modules/*/client.js`) makes every connected browser reload. The server keeps running.
-- Any other change saves the game state, restarts the server, and the browsers reconnect and reload on their own. Players keep their position and inventory, matched by name; tiles, creatures, and campfires survive as well. Tile edits are stored by tile name, so adding new tiles is safe.
-- If new code crashes the server on startup, the terminal says so and the supervisor waits for the next save. Browsers keep retrying in the meantime.
+| What changed | What happens | Who notices |
+|---|---|---|
+| `modules/*/client.js`, `client/` | Browsers reload; the server keeps running | A one-second reload |
+| `modules/*/server.js` | **Hot swap**: the new server code replaces the old in the running game | Nobody; a "Server code updated" notice appears |
+| Other files in `modules/<team>/` (helpers) | Hot swap and browser reload | A one-second reload |
+| `modules/*/shared.js`, `shared/`, `server/`, `manifest.js` | **Restart with state**: the server saves, restarts, and restores; browsers reconnect and reload | A one- to two-second reconnect |
+
+A hot swap replaces systems, action handlers, and event listeners, while entities, tiles, players, and connections stay as they are. If the new code fails to load, the module's previous version keeps running and every player sees a red notice. Changes to `shared.js` need a restart because they define the **data model**: tiles, items, and entity types. A restart restores saved state by name: tile edits are stored by tile name, and entities saved before a new field existed get that field's default value. When a change breaks saved state anyway (a renamed type, a field whose meaning changed), type `f` and Enter in the dev terminal to start a fresh world. Other commands: `h` hot-swaps on demand, `r` restarts keeping state.
 
 Reloading the page or losing Wi-Fi also keeps your player: the name in the URL (`?name=Ada`) is your identity, so pick a unique one.
 
@@ -183,22 +224,27 @@ Everyone clones the repo and commits directly to `main`. Pull requests would cos
 - Commit small and often, roughly every 10 to 15 minutes, whenever something works.
 - Run `git pull --rebase` before every `git push`.
 - Each pair runs its own local `npm run dev` while developing: two browser tabs give you two players.
-- The integration lead runs the **shared server** with `npm run dev` from their own checkout. The server sends its own copy of the game files to every browser, so all players run the same version. Thanks to hot restart, a `git pull` on that checkout deploys itself; nobody needs to restart anything or reload by hand.
+- The integration lead runs the **shared server** with `npm run dev` from their own checkout. The server sends its own copy of the game files to every browser, so all players run the same version. A `git pull` on that checkout deploys itself, mostly by hot swap.
 - If `main` breaks and the fix is not obvious within five minutes, `git revert` the commit and fix it locally.
 
 ## Running the game
 
 ```
 npm install
-npm run dev                    # http://localhost:8080/?name=You, hot restart on changes
-npm start                      # plain server, fresh world each start
-START_TIME=160 npm run dev     # start at dusk
-SEED=1234 npm run dev          # the same island every time
+npm run dev                          # http://localhost:8080/?name=You, live code updates
+npm start                            # plain server, fresh world each start
+START_PHASE=0.65 npm run dev         # start at dusk (0 sunrise, 0.6 dusk, 0.7 night, 0.95 dawn)
+DAY_LENGTH=180 npm run dev           # three-minute days for testing night features
+SEED=1234 npm run dev                # the same island every time
 PORT=9000 npm run dev
-npm test                       # headless tests: core loop, combat, fire, hot restart
+npm test                             # headless tests: core loop, combat, fire, director, live updates
 ```
 
 The server prints its network address at startup. Eduroam often blocks connections between laptops, so test the shared server before the session. Fallbacks: a phone hotspot or travel router, or a small cloud or department VM.
+
+## Day length
+
+Minecraft's twenty-minute day with a night of about seven minutes suits players who stay for hours. Tonight's constraint is different: two hours of building and one ten-minute final session. The default eight-minute day gives two minutes of night plus fifty seconds of dusk, so the director's build-up, midnight horde, and relax phases each last long enough to feel. Developers testing night features should run `DAY_LENGTH=180` (45 seconds of night) or start at dusk with `START_PHASE`. For the final session, `DAY_LENGTH=600 START_PHASE=0.4` gives about four minutes to prepare, a minute of dusk, and two and a half minutes of night with a horde in the middle.
 
 ## Schedule
 
@@ -206,8 +252,8 @@ The server prints its network address at startup. Eduroam often blocks connectio
 |---|---|
 | 0:00 to 0:10 | Demo the skeleton on the projector. Pairs confirm their goal for integration 1. |
 | 0:10 to 0:45 | Sprint 1: each team builds its first goal against the existing slice. |
-| 0:45 to 0:55 | Integration 1: the lead pulls; the server hot-restarts; everyone plays for five minutes; each pair names one bug and one hook it needs from another team. |
-| 0:55 to 1:35 | Sprint 2: cross-team features (enemies drop items, villagers request crafted goods, spells light the dark). |
+| 0:45 to 0:55 | Integration 1: the lead pulls; the server updates itself; everyone plays for five minutes; each pair names one bug and one hook it needs from another team. |
+| 0:55 to 1:35 | Sprint 2: cross-team features (enemies drop items, villagers request crafted goods, spells light the dark), director tuning. |
 | 1:35 to 1:50 | Feature freeze: bug fixes and polish only. |
 | 1:50 to 2:00 | Final session: everyone survives one night together on the projector. |
 
@@ -220,6 +266,7 @@ The server prints its network address at startup. Eduroam often blocks connectio
 
 ## Open questions
 
+- The final name.
 - Do we fix the seed so the demo island is known in advance?
 - Do we want a goal, such as a score for nights survived or a boss to defeat on the last night?
 - Should explored tiles be shared between players (a team map) or stay personal as now?

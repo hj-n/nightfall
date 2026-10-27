@@ -1,31 +1,39 @@
 // TEAM CREATURES (server): spawning and AI. Creatures are server-owned entities;
 // moving them here moves them on every client automatically.
 import { registerSystem, onEvent } from '../../shared/registry.js';
-
-const SLIMES_PER_PLAYER = 4;
+import { updateDirector, noteDamage } from './director.js';
 const WINDUP = 0.4; // seconds of visible wind-up before a bite lands: the parry cue
 
 // Burning campfires (entities with repels: true) keep monsters out of most of their light.
 const fires = (game) => [...game.entities.values()].filter((e) => e.repels);
 const fireAt = (list, x, y, pad = 0) => list.find((f) => Math.hypot(f.x - x, f.y - y) < f.light * 0.8 + pad);
 
-// At night, keep a few slimes around each player.
-registerSystem('night-spawner', (game) => {
-  if (!game.timeOfDay().isNight) return;
+// Where and when monsters appear is up to the game director (director.js).
+// This is how it spawns one slime near a player: out of sight and out of firelight.
+// Horde members spawn further out, all from the same direction, and hunt from afar.
+function spawnSlime(game, player, { horde, angle }) {
   const fl = fires(game);
-  const slimes = [...game.entities.values()].filter((e) => e.type === 'slime');
-  for (const p of game.players()) {
-    const nearby = slimes.filter((s) => Math.hypot(s.x - p.x, s.y - p.y) < 16).length;
-    if (nearby >= SLIMES_PER_PLAYER || Math.random() > 0.05) continue;
-    for (let tries = 0; tries < 10; tries++) { // pick a walkable, unlit spot just out of sight
-      const a = Math.random() * Math.PI * 2, d = 9 + Math.random() * 5;
-      const x = p.x + Math.cos(a) * d, y = p.y + Math.sin(a) * d;
-      if (!game.world.blocked(x, y) && !fireAt(fl, x, y, 1)) { game.spawn('slime', { x, y }); break; }
-    }
+  for (let tries = 0; tries < 12; tries++) {
+    const a = horde ? angle + (Math.random() - 0.5) : Math.random() * Math.PI * 2;
+    const d = horde ? 13 + Math.random() * 3 : 9 + Math.random() * 5;
+    const x = player.x + Math.cos(a) * d, y = player.y + Math.sin(a) * d;
+    if (!game.world.blocked(x, y) && !fireAt(fl, x, y, 1)) return game.spawn('slime', { x, y, ...(horde ? { aggro: 25 } : {}) });
   }
+  return null;
+}
+
+registerSystem('director', (game, dt) => updateDirector(game, dt, spawnSlime));
+onEvent('damage', (game, hit) => noteDamage(game, hit));
+
+// Debug view for tuning: clients press F3 to see this.
+registerSystem('director-debug', (game) => {
+  const d = game.director;
+  if (!d || game.time - (d._sentAt || 0) < 1) return;
+  d._sentAt = game.time;
+  game.broadcast('director', { state: d.state, budget: d.budget, threat: d.threat, intensity: d.intensity, factors: d.factors, hordes: d.hordes });
 });
 
-// Chase the nearest player within 8 tiles, otherwise wander. Never step into
+// Chase the nearest player within `aggro` tiles (8; hordes 25), otherwise wander. Never step into
 // fire light; flee it if caught inside (a fire can burn out or be lit nearby).
 // Bites are telegraphed: `windup` is public so clients can draw it.
 registerSystem('slime-ai', (game, dt) => {
@@ -34,7 +42,7 @@ registerSystem('slime-ai', (game, dt) => {
     if (s.type !== 'slime') continue;
     if ((s.stunnedUntil || 0) > game.time) { s.windup = false; continue; }
 
-    let target = null, best = 8;
+    let target = null, best = s.aggro || 8;
     for (const p of game.players()) {
       const d = Math.hypot(p.x - s.x, p.y - s.y);
       if (d < best) { best = d; target = p; }
@@ -56,6 +64,16 @@ registerSystem('slime-ai', (game, dt) => {
       for (const turn of [0, 0.6, -0.6, 1.2, -1.2, 1.8, -1.8]) {
         const nx = s.x + Math.cos(base + turn) * step, ny = s.y + Math.sin(base + turn) * step;
         if (ok(nx, ny)) { s.x = nx; s.y = ny; break; }
+      }
+    }
+
+    // keep a little distance from other slimes so packs spread out instead of stacking
+    for (const o of game.entities.values()) {
+      if (o === s || o.type !== 'slime') continue;
+      const ox = s.x - o.x, oy = s.y - o.y, dist = Math.hypot(ox, oy);
+      if (dist > 0 && dist < 0.6) {
+        const nx = s.x + (ox / dist) * dt, ny = s.y + (oy / dist) * dt;
+        if (!game.world.blocked(nx, ny)) { s.x = nx; s.y = ny; }
       }
     }
 

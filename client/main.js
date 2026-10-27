@@ -25,6 +25,7 @@ const game = {
   input: createInput(canvas),
   camera: { x: 0, y: 0 },
   vision: null, // fog of war, see core/vision.js
+  notices: [],  // on-screen messages, see notify()
   screen: { w: 0, h: 0 },
   send: () => {},
 
@@ -56,6 +57,8 @@ const game = {
     }
     return this.facingTile(me);
   },
+  /** Show a message at the top of the screen for a few seconds */
+  notify(text, seconds = 4, color = '#fff') { this.notices.push({ text, color, until: performance.now() + seconds * 1000 }); },
   /** Fog of war: can we see world position (x, y) right now? */
   canSee(x, y) { return canSee(this, x, y); },
 };
@@ -63,6 +66,11 @@ window.game = game; // handy for poking at in the browser console
 
 game.failedModules = await loadModules('client', (p) => import(`../modules/${p}`));
 _attachListeners(game);
+game.bus.on('net:hotswap', ({ failed }) =>
+  game.notify(failed.length ? `Server code updated; ${failed.join(', ')} failed to load (see server log)` : 'Server code updated', 3,
+    failed.length ? '#f88' : '#9cf'));
+game.bus.on('net:dusk', ({ day }) => game.notify(`Night ${day} falls`, 4, '#9ab'));
+game.bus.on('net:dawn', ({ day }) => game.notify(`Day ${day + 1} dawns`, 4, '#fe8'));
 
 function resize() {
   canvas.width = game.screen.w = innerWidth;

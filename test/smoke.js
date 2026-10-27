@@ -7,9 +7,11 @@ process.env.START_TIME = '10';
 
 import { WebSocket } from 'ws';
 import { World } from '../shared/world.js';
-import { DAY_LENGTH } from '../shared/config.js';
+import { clock } from '../shared/time.js';
+const DAY_LENGTH = clock.dayLength;
 
 const { game } = await import('../server/index.js');
+const { computeBudget } = await import('../modules/creatures/director.js');
 await new Promise((r) => setTimeout(r, 300));
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -117,6 +119,24 @@ check(dOut > r - 0.3, `slime chasing a player stops at the firelight edge (${dOu
 check(alice.hp === alice.maxHp, 'player inside burning firelight takes no damage');
 await sleep(1500);
 check([...game.entities.values()].filter((e) => e.type === 'slime').length > 2, 'slimes spawn at night');
+
+// --- game director ---------------------------------------------------------
+check(['build-up', 'peak', 'relax'].includes(game.director?.state), `director is active at night (${game.director?.state})`);
+const plain = computeBudget(game).budget;
+for (const p of game.players()) game.give(p, 'shield');
+const geared = computeBudget(game).budget;
+check(geared > plain * 1.2, `better gear raises the threat budget (${plain.toFixed(1)} -> ${geared.toFixed(1)})`);
+const extra = game.spawn('campfire', { x: 5, y: 5 });
+check(computeBudget(game).budget > geared, 'a bigger settlement raises the threat budget');
+game.despawn(extra.id);
+const nightOne = computeBudget(game, { ...game.timeOfDay(), day: 1 }).budget;
+const nightThree = computeBudget(game, { ...game.timeOfDay(), day: 3 }).budget;
+check(nightThree > nightOne * 1.4, 'later nights get harder');
+game.director.hordes = [0.5];
+game.time = DAY_LENGTH * (0.7 + 0.25 * 0.51); // just past midnight
+await sleep(300);
+const horde = a.events.find((e) => e.name === 'horde');
+check(horde && horde.data.count >= 3 && game.director.state === 'peak', `midnight horde arrives (${horde?.data.count} from the ${horde?.data.from})`);
 
 // --- resume by name ------------------------------------------------------
 game.give(alice, 'stone', 3);

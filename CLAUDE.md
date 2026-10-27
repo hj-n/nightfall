@@ -13,13 +13,15 @@ You are helping one pair of people during a two-hour, ten-person game jam. Five 
 7. **No new npm packages, no build tools, no TypeScript, no frameworks.** Plain JavaScript ES modules and Canvas 2D.
 8. **Hurt things only with `game.damage(target, amount, source)`.** Never subtract `hp` directly: blocking and parrying hook into the `damage` event it emits.
 9. **Coordinate with other teams through events and entity fields,** never by importing their files. Prefer adding a field (`e.burning = true`) or an event (`game.bus.emit('itemDropped', ...)`) that another team can pick up.
-10. **Keep changes small** and make sure the game still starts after each one.
+10. **Keep state on entities or on `game`, never in module-level variables,** and never use `setInterval`/`setTimeout` in server code (use `registerSystem`). `npm run dev` hot-swaps `server.js` files in place, which resets module variables and would leave old timers running.
+11. **Keep changes small** and make sure the game still starts after each one.
 
 ## Files
 
 ```
 server/index.js        server: static files, WebSocket, game loop, server `game` object, persistence
-server/dev.js          `npm run dev`: restarts the server on code changes, keeping state
+server/dev.js          `npm run dev`: hot-swaps server.js changes, restarts (keeping state) for the rest
+server/hot-hooks.js    loader hook that makes hot swaps reload helper files too
 client/main.js         client entry, client `game` object, frame loop
 client/core/           input.js, net.js (snapshots, reconnect), render.js (tiles, entities,
                        lighting, fog, HUD), vision.js (fog of war, line of sight)
@@ -43,8 +45,14 @@ Entity fields with meaning across teams:
 | `guarding` | Player is holding guard (block with a shield, parry without). |
 | `windup` | Creature is about to attack: the visual cue players parry on. |
 | `inventory` | `{ itemName: count }`; change it only with `game.give()`. |
+| `hostile`, `threat` | A monster the game director counts against its budget, and how much it costs (default 1). |
+| `aggro` | Tiles within which a creature notices players (slimes 8, horde members 25). |
 
-Tile flags: `solid` blocks movement, `opaque` blocks line of sight, `harvest: { item, count, becomes }` makes a tile harvestable with E.
+Item flags: `gear` (a number) or `equip` adds to the group's gear score, which raises the director's budget. Tile flags: `structure: true` counts toward the settlement score.
+
+Tile flags: `solid` blocks movement, `opaque` blocks line of sight, `structure` counts toward the settlement, `harvest: { item, count, becomes }` makes a tile harvestable with E.
+
+The game director (`modules/creatures/director.js`) decides when and where monsters spawn at night. A new monster type spawns through it: give the type `hostile: true`, `hp`, and a `threat` cost, and add a spawn function like `spawnSlime` in `modules/creatures/server.js`. Tuning numbers live in `TUNING`; F3 in the browser shows the live state.
 
 ## Patterns
 
@@ -117,8 +125,8 @@ An entity with a numeric `light` field lights up the night automatically. On the
 
 ## Testing
 
-- `npm run dev`, then open `http://localhost:8080/?name=A` and `http://localhost:8080/?name=B` in two tabs. Every saved change restarts the server (or just reloads the browsers for client-only files) and keeps the game state, so there is no need to restart anything by hand.
-- `START_TIME=160 npm run dev` starts at dusk, so you can test night features right away. `SEED=1234` fixes the island.
-- `npm test` runs headless tests of the core loop, combat, fire, and hot restart. Run it before pushing anything that touches harvesting, crafting, combat, or spawning.
+- `npm run dev`, then open `http://localhost:8080/?name=A` and `http://localhost:8080/?name=B` in two tabs. Saving `server.js` hot-swaps it into the running game; saving `client.js` reloads the browsers; saving `shared.js` restarts the server and restores the game state. Never restart anything by hand. If saved state no longer fits a changed data model, type `f` + Enter in the dev terminal for a fresh world.
+- `START_PHASE=0.65 npm run dev` starts at dusk and `DAY_LENGTH=180` shortens the day, so you can test night features right away. `SEED=1234` fixes the island.
+- `npm test` runs headless tests of the core loop, combat, fire, the director, and live code updates. Run it before pushing anything that touches harvesting, crafting, combat, or spawning.
 - `window.game` in the browser console exposes the client state.
 - Errors inside systems, handlers, and drawers are caught and logged (at most once every five seconds per site), so check the server terminal and the browser console after each change.

@@ -150,6 +150,22 @@ function drawCoreHud(ctx, game, w, h) {
   ctx.fillStyle = 'rgba(255,255,255,0.7)';
   lines.forEach((line, i) => ctx.fillText(line, w / 2, h - 10 - (lines.length - 1 - i) * 17));
 
+  // notices (game.notify)
+  game.notices = game.notices.filter((n) => n.until > performance.now());
+  ctx.font = '18px ui-monospace, monospace';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'top';
+  game.notices.slice(-4).forEach((n, i) => {
+    ctx.globalAlpha = Math.min(1, (n.until - performance.now()) / 600);
+    ctx.fillStyle = 'rgba(0,0,0,0.55)';
+    const tw = ctx.measureText(n.text).width;
+    ctx.fillRect(w / 2 - tw / 2 - 10, 14 + i * 30, tw + 20, 26);
+    ctx.fillStyle = n.color;
+    ctx.fillText(n.text, w / 2, 18 + i * 30);
+  });
+  ctx.globalAlpha = 1;
+  ctx.font = '14px ui-monospace, monospace';
+
   if (game.failedModules.length) {
     ctx.textAlign = 'left';
     ctx.textBaseline = 'bottom';

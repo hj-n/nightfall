@@ -5,7 +5,7 @@ export function createInput(canvas) {
   const down = new Set();
   const pressed = new Set();
   const mouse = { x: 0, y: 0, active: false, down: new Set(), clicked: new Set() };
-  const BLOCK = new Set(['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Tab']);
+  const BLOCK = new Set(['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Tab', 'F3']);
 
   const typing = () => ['INPUT', 'TEXTAREA'].includes(document.activeElement?.tagName);
 
